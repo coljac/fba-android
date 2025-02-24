@@ -10,10 +10,12 @@ import androidx.navigation.navArgument
 import space.coljac.FreeAudio.ui.screens.SearchScreen
 import space.coljac.FreeAudio.ui.screens.TalkDetailScreen
 import space.coljac.FreeAudio.viewmodel.AudioViewModel
+import space.coljac.FreeAudio.ui.screens.HomeScreen
 
 sealed class Screen(val route: String) {
-    object Search : Screen("search")
-    object TalkDetail : Screen("talk/{talkId}") {
+    data object Home : Screen("home")
+    data object Search : Screen("search")
+    data object TalkDetail : Screen("talk/{talkId}") {
         fun createRoute(talkId: String) = "talk/$talkId"
     }
 }
@@ -25,8 +27,18 @@ fun AppNavigation(
 ) {
     NavHost(
         navController = navController,
-        startDestination = Screen.Search.route
+        startDestination = Screen.Home.route
     ) {
+        composable(Screen.Home.route) {
+            HomeScreen(
+                viewModel = viewModel,
+                onNavigateToSearch = { navController.navigate(Screen.Search.route) },
+                onTalkSelected = { talk ->
+                    navController.navigate(Screen.TalkDetail.createRoute(talk.id))
+                }
+            )
+        }
+        
         composable(Screen.Search.route) {
             SearchScreen(
                 viewModel = viewModel,
@@ -46,6 +58,7 @@ fun AppNavigation(
                 ?: return@composable
             TalkDetailScreen(
                 viewModel = viewModel,
+                talkId = talkId,
                 onNavigateUp = { navController.navigateUp() }
             )
         }

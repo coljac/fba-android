@@ -15,6 +15,7 @@ import space.coljac.FreeAudio.data.SearchState
 import space.coljac.FreeAudio.data.Talk
 import space.coljac.FreeAudio.network.FBAService
 import space.coljac.FreeAudio.data.TalkRepository
+import java.io.File
 
 private const val TAG = "AudioViewModel"
 
@@ -38,12 +39,28 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     private val _isDownloaded = MutableStateFlow(false)
     val isDownloaded: StateFlow<Boolean> = _isDownloaded
 
+    private val _downloadedTalks = MutableStateFlow<List<Talk>>(emptyList())
+    val downloadedTalks: StateFlow<List<Talk>> = _downloadedTalks
+
+    private val _recentPlays = MutableStateFlow<List<Talk>>(emptyList())
+    val recentPlays: StateFlow<List<Talk>> = _recentPlays
+
     data class PlaybackState(
         val isPlaying: Boolean = false,
         val currentTrackIndex: Int = 0,
         val position: Long = 0,
         val duration: Long = 0
     )
+
+    init {
+        loadDownloadedTalks()
+    }
+
+    private fun loadDownloadedTalks() {
+        viewModelScope.launch {
+            _downloadedTalks.value = repository.getDownloadedTalks()
+        }
+    }
 
     fun search(query: String) {
         viewModelScope.launch {
@@ -70,7 +87,7 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
             val mediaItems = talk.tracks.map { track ->
                 val localPath = repository.getLocalTalkPath(talk.id, track.number)
                 if (localPath != null) {
-                    MediaItem.fromUri("file://$localPath")
+                    MediaItem.fromUri(File(localPath).toUri())
                 } else {
                     MediaItem.fromUri(track.path)
                 }
@@ -79,6 +96,11 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
             prepare()
             play()
             _playbackState.value = _playbackState.value.copy(isPlaying = true)
+        }
+        
+        viewModelScope.launch {
+            repository.addToRecentPlays(talk)
+            _recentPlays.value = repository.getRecentPlays()
         }
     }
     
@@ -127,6 +149,27 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 Log.e(TAG, "Download error", e)
                 _downloadProgress.value = null
+            }
+        }
+    }
+
+    fun deleteTalk(talk: Talk) {
+        viewModelScope.launch {
+            repository.deleteTalk(talk.id)
+            loadDownloadedTalks()
+        }
+    }
+    
+    fun refreshDownloads() {
+        viewModelScope.launch {
+            loadDownloadedTalks()
+        }
+    }
+    
+    fun loadTalk(talkId: String) {
+        viewModelScope.launch {
+            repository.getTalkById(talkId)?.let { talk ->
+                setCurrentTalk(talk)
             }
         }
     }
