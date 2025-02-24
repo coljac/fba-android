@@ -1,13 +1,9 @@
 package space.coljac.FreeAudio.playback
 
-import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
-import androidx.core.app.NotificationCompat
-import androidx.media.app.NotificationCompat.MediaStyle
-
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Player
@@ -15,6 +11,8 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import androidx.media3.session.MediaNotification
+import androidx.media3.session.DefaultMediaNotificationProvider
 import space.coljac.FreeAudio.MainActivity
 import space.coljac.FreeAudio.R
 
@@ -26,12 +24,14 @@ class AudioService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
     private lateinit var player: ExoPlayer
     private lateinit var notificationManager: NotificationManager
+    private lateinit var notificationProvider: DefaultMediaNotificationProvider
 
     override fun onCreate() {
         super.onCreate()
         notificationManager = getSystemService(NotificationManager::class.java)
         createNotificationChannel()
         
+        // Initialize ExoPlayer
         player = ExoPlayer.Builder(this)
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -41,23 +41,8 @@ class AudioService : MediaSessionService() {
                 true
             )
             .build()
-        
-        player.addListener(object : Player.Listener {
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                if (isPlaying) {
-                    startForeground(NOTIFICATION_ID, buildNotification())
-                } else {
-                    stopForeground(false)
-                    notificationManager.notify(NOTIFICATION_ID, buildNotification())
-                }
-            }
 
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                super.onPlaybackStateChanged(playbackState)
-                updateNotification()
-            }
-        })
-
+        // Create MediaSession
         mediaSession = MediaSession.Builder(this, player)
             .setSessionActivity(
                 PendingIntent.getActivity(
@@ -68,6 +53,22 @@ class AudioService : MediaSessionService() {
                 )
             )
             .build()
+
+        // Setup notification provider
+        notificationProvider = DefaultMediaNotificationProvider.Builder(this)
+            .setChannelId(CHANNEL_ID)
+            .build()
+
+        // Add player listener to handle notification state
+        player.addListener(object : Player.Listener {
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                updateNotificationState()
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                updateNotificationState()
+            }
+        })
     }
 
     private fun createNotificationChannel() {
@@ -81,42 +82,18 @@ class AudioService : MediaSessionService() {
         notificationManager.createNotificationChannel(channel)
     }
 
-    private fun buildNotification(): Notification {
-        val mediaSession = mediaSession ?: return Notification()
+    private fun updateNotificationState() {
+        val notification = notificationProvider.createNotification(
+            mediaSession!!,
+            customLayout = null,
+            ongoing = player.isPlaying
+        )
         
-        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(player.mediaMetadata.title ?: "Unknown Title")
-            .setContentText(player.mediaMetadata.artist ?: "Unknown Artist")
-            .setContentIntent(mediaSession.sessionActivity)
-            .setStyle(NotificationCompat.MediaStyle()
-                .setShowActionsInCompactView(0))
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setOnlyAlertOnce(true)
-
-        // Add playback controls
-        val playPauseIntent = PendingIntent.getService(
-            this,
-            0,
-            Intent(this, AudioService::class.java).apply {
-                action = if (player.isPlaying) "ACTION_PAUSE" else "ACTION_PLAY"
-            },
-            PendingIntent.FLAG_IMMUTABLE
-        )
-
-        builder.addAction(
-            if (player.isPlaying) R.drawable.ic_pause else R.drawable.ic_play,
-            if (player.isPlaying) "Pause" else "Play",
-            playPauseIntent
-        )
-
-        return builder.build()
-    }
-
-    private fun updateNotification() {
         if (player.isPlaying) {
-            notificationManager.notify(NOTIFICATION_ID, buildNotification())
+            startForeground(NOTIFICATION_ID, notification)
+        } else {
+            stopForeground(false)
+            notificationManager.notify(NOTIFICATION_ID, notification)
         }
     }
 
@@ -138,4 +115,4 @@ class AudioService : MediaSessionService() {
         }
         super.onDestroy()
     }
-} 
+}
