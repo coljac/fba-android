@@ -49,7 +49,7 @@ fun TalkItem(
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Text(
-                    text = "${talk.tracks.size} track(s)",
+                    text = "${talk.tracks.size} track${if (talk.tracks.size != 1) "s" else ""} • ${talk.year}",
                     style = MaterialTheme.typography.bodySmall
                 )
             }
