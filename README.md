@@ -2,16 +2,16 @@
 
 An Android client for freebuddhistaudio.com.
 
-Current status: **borked**
+Current status: **borked** (search works, downloading and playback mostly works, lots of bugs)
 
 TODOs include:
+
 - Fix current breaking bugs
 - Nicer home screen
 - Android Auto
 
-
 Bugs/enhancements:
-- Downloaded talk talk details page is blank
+
 - Delete from downloaded talk talk details
 - No progress bar for audio playback
 - No track list on talk details screen and playback

@@ -65,7 +65,8 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.3.0")
     implementation("androidx.media3:media3-session:1.3.0")
     implementation("androidx.media3:media3-common:1.3.0")
-    
+    implementation("androidx.media:media:1.7.0")
+
     // Retrofit for network calls
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
@@ -82,4 +83,10 @@ dependencies {
 
     // Material icons extended
     implementation("androidx.compose.material:material-icons-extended:1.6.1")
+
+
+//    implementation("androidx.media3:media3-exoplayer:1.2.0")
+//    implementation("androidx.media3:media3-session:1.2.0")
+//    implementation("androidx.media3:media3-common:1.2.0")
+
 }
