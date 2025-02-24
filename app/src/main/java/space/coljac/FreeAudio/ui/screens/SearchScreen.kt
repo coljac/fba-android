@@ -54,7 +54,7 @@ fun SearchScreen(
                     LazyColumn {
                         items(
                             items = results.results,
-                            key = { it.id }
+                            key = { "${it.id}_search" }
                         ) { talk ->
                             TalkItem(
                                 talk = talk,

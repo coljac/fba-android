@@ -2,11 +2,8 @@ package space.coljac.FreeAudio.playback
 
 import android.app.PendingIntent
 import android.content.Intent
-import android.os.Bundle
-import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import space.coljac.FreeAudio.MainActivity
@@ -19,6 +16,18 @@ class AudioService : MediaSessionService() {
         super.onCreate()
         player = ExoPlayer.Builder(this).build()
         
+        player.addListener(object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                // The MediaSession is already connected to the player
+                // No need to manually sync state
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                super.onPlaybackStateChanged(playbackState)
+                // The MediaSession automatically handles playback state changes
+            }
+        })
+
         mediaSession = MediaSession.Builder(this, player)
             .setSessionActivity(
                 PendingIntent.getActivity(

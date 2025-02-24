@@ -59,14 +59,14 @@ fun HomeScreen(
                 item {
                     Text(
                         "Downloaded Talks",
-                        style = MaterialTheme.typography.titleLarge,
+                        style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.padding(16.dp)
                     )
                 }
                 
                 items(
                     items = downloadedTalks,
-                    key = { it.id }
+                    key = { "${it.id}_downloaded" }
                 ) { talk ->
                     val dismissState = rememberSwipeToDismissBoxState(
                         confirmValueChange = { dismissValue ->
@@ -85,7 +85,10 @@ fun HomeScreen(
                     ) {
                         TalkItem(
                             talk = talk,
-                            onPlayClick = { onTalkSelected(it) }
+                            onPlayClick = { 
+                                viewModel.playTalk(it)
+                                onTalkSelected(it)
+                            }
                         )
                     }
                 }
@@ -95,18 +98,21 @@ fun HomeScreen(
                 item {
                     Text(
                         "Recently Played",
-                        style = MaterialTheme.typography.titleLarge,
+                        style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.padding(16.dp)
                     )
                 }
                 
                 items(
                     items = recentPlays,
-                    key = { it.id }
+                    key = { "${it.id}_recent" }
                 ) { talk ->
                     TalkItem(
                         talk = talk,
-                        onPlayClick = { onTalkSelected(it) }
+                        onPlayClick = { 
+                            viewModel.playTalk(it)
+                            onTalkSelected(it)
+                        }
                     )
                 }
             }

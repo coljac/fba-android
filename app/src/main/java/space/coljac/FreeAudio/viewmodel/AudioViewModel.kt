@@ -16,6 +16,7 @@ import space.coljac.FreeAudio.data.Talk
 import space.coljac.FreeAudio.network.FBAService
 import space.coljac.FreeAudio.data.TalkRepository
 import java.io.File
+import android.net.Uri
 
 private const val TAG = "AudioViewModel"
 
@@ -79,23 +80,31 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     
     fun playTalk(talk: Talk) {
         setCurrentTalk(talk)
-        if (player == null) {
-            player = ExoPlayer.Builder(getApplication()).build()
-        }
+        initializePlayer()
         
         player?.run {
             val mediaItems = talk.tracks.map { track ->
                 val localPath = repository.getLocalTalkPath(talk.id, track.number)
-                if (localPath != null) {
-                    MediaItem.fromUri(File(localPath).toUri())
+                val uri = if (localPath != null) {
+                    Uri.parse("file://$localPath")
                 } else {
-                    MediaItem.fromUri(track.path)
+                    Uri.parse(track.path)
                 }
+                MediaItem.Builder()
+                    .setUri(uri)
+                    .setMediaMetadata(
+                        androidx.media3.common.MediaMetadata.Builder()
+                            .setTitle(track.title)
+                            .setArtist(talk.speaker)
+                            .setAlbumTitle(talk.title)
+                            .setArtworkUri(Uri.parse(talk.imageUrl))
+                            .build()
+                    )
+                    .build()
             }
             setMediaItems(mediaItems)
             prepare()
             play()
-            _playbackState.value = _playbackState.value.copy(isPlaying = true)
         }
         
         viewModelScope.launch {
@@ -178,5 +187,29 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         player?.release()
         player = null
         super.onCleared()
+    }
+
+    private fun initializePlayer() {
+        if (player == null) {
+            player = ExoPlayer.Builder(getApplication()).build().apply {
+                addListener(object : Player.Listener {
+                    override fun onIsPlayingChanged(isPlaying: Boolean) {
+                        _playbackState.value = _playbackState.value.copy(isPlaying = isPlaying)
+                    }
+
+                    override fun onPositionDiscontinuity(
+                        oldPosition: Player.PositionInfo,
+                        newPosition: Player.PositionInfo,
+                        reason: Int
+                    ) {
+                        _playbackState.value = _playbackState.value.copy(
+                            currentTrackIndex = currentMediaItemIndex,
+                            position = currentPosition,
+                            duration = duration
+                        )
+                    }
+                })
+            }
+        }
     }
 } 

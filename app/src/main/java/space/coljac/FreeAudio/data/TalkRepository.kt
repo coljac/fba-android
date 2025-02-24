@@ -30,26 +30,36 @@ class TalkRepository(private val context: Context) {
         talkDir.mkdirs()
 
         try {
-            talk.tracks.forEachIndexed { index, track ->
-                val trackFile = File(talkDir, "${index + 1}.mp3")
-                if (!trackFile.exists()) {
-                    withContext(Dispatchers.IO) {
-                        val url = URL(track.path)
-                        val connection = url.openConnection()
-                        val totalBytes = connection.contentLength.toFloat()
-                        var downloadedBytes = 0f
-
-                        connection.getInputStream().use { input ->
-                            FileOutputStream(trackFile).use { output ->
-                                val buffer = ByteArray(8192)
-                                var bytes = input.read(buffer)
-                                while (bytes >= 0) {
-                                    output.write(buffer, 0, bytes)
-                                    downloadedBytes += bytes
-                                    emit(downloadedBytes / totalBytes)
-                                    bytes = input.read(buffer)
+            // Download the ZIP file containing all tracks
+            val zipUrl = URL("https://www.freebuddhistaudio.com/talks/mp3zips/${talk.id}.zip")
+            val connection = zipUrl.openConnection()
+            val totalBytes = connection.contentLength.toFloat()
+            var downloadedBytes = 0f
+            Log.i(TAG, "Downloading talk ${talk.id} from $zipUrl")
+            withContext(Dispatchers.IO) {
+                connection.getInputStream().use { input ->
+                    ZipInputStream(input).use { zipInput ->
+                        var entry = zipInput.nextEntry
+                        while (entry != null) {
+                            // Extract only MP3 files
+                            if (!entry.isDirectory && entry.name.endsWith(".mp3")) {
+                                val trackNumber = entry.name.substringBefore(".mp3").toIntOrNull()
+                                if (trackNumber != null) {
+                                    val trackFile = File(talkDir, "$trackNumber.mp3")
+                                    FileOutputStream(trackFile).use { output ->
+                                        val buffer = ByteArray(8192)
+                                        var bytes = zipInput.read(buffer)
+                                        while (bytes >= 0) {
+                                            output.write(buffer, 0, bytes)
+                                            downloadedBytes += bytes
+                                            emit(downloadedBytes / totalBytes)
+                                            bytes = zipInput.read(buffer)
+                                        }
+                                    }
                                 }
                             }
+                            zipInput.closeEntry()
+                            entry = zipInput.nextEntry
                         }
                     }
                 }

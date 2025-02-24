@@ -112,7 +112,10 @@ fun TalkDetailScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Button(
-                        onClick = { viewModel.downloadTalk(talk) },
+                        onClick = { 
+                            // Only download, don't play
+                            if (!isDownloaded) viewModel.downloadTalk(talk) 
+                        },
                         modifier = Modifier.weight(1f),
                         enabled = !isDownloaded && downloadProgress == null
                     ) {
@@ -126,7 +129,7 @@ fun TalkDetailScreen(
                                         modifier = Modifier.size(16.dp),
                                         strokeWidth = 2.dp
                                     )
-                                    Text("Downloading...")
+                                    Text("${(downloadProgress?.times(100))?.toInt()}%")
                                 }
                                 isDownloaded -> {
                                     Icon(Icons.Default.Check, "Downloaded")
@@ -148,8 +151,11 @@ fun TalkDetailScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Default.PlayArrow, "Play")
-                            Text("Play")
+                            Icon(
+                                if (playbackState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                "Play"
+                            )
+                            Text(if (playbackState.isPlaying) "Pause" else "Play")
                         }
                     }
                 }
