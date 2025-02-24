@@ -9,8 +9,8 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material.icons.rounded.Forward30
-import androidx.compose.material.icons.rounded.Replay30
+import androidx.compose.material.icons.rounded.FastForward
+import androidx.compose.material.icons.rounded.FastRewind
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -95,7 +95,7 @@ fun TalkDetailScreen(
                         Icon(Icons.Default.SkipPrevious, "Previous Track")
                     }
                     IconButton(onClick = { viewModel.seekBackward() }) {
-                        Icon(Icons.Rounded.Replay30, "Seek Backward")
+                        Icon(Icons.Rounded.FastRewind, "Seek Backward")
                     }
                     FilledIconButton(
                         onClick = { viewModel.togglePlayPause() }
@@ -107,7 +107,7 @@ fun TalkDetailScreen(
                         )
                     }
                     IconButton(onClick = { viewModel.seekForward() }) {
-                        Icon(Icons.Rounded.Forward30, "Seek Forward")
+                        Icon(Icons.Rounded.FastForward, "Seek Forward")
                     }
                     IconButton(onClick = { viewModel.skipToNextTrack() }) {
                         Icon(Icons.Default.SkipNext, "Next Track")
@@ -124,10 +124,12 @@ fun TalkDetailScreen(
                 ) {
                     when {
                         downloadProgress != null -> {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(24.dp),
-                                progress = downloadProgress
-                            )
+                            downloadProgress?.let { progress ->
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(24.dp),
+                                    progress = progress
+                                )
+                            }
                         }
                         isDownloaded -> {
                             Text("Downloaded")
