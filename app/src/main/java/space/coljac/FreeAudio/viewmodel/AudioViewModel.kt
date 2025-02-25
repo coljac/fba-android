@@ -17,6 +17,7 @@ import space.coljac.FreeAudio.network.FBAService
 import space.coljac.FreeAudio.data.TalkRepository
 import java.io.File
 import android.net.Uri
+import kotlinx.coroutines.delay
 
 private const val TAG = "AudioViewModel"
 
@@ -194,7 +195,7 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
             player = ExoPlayer.Builder(getApplication()).build().apply {
                 addListener(object : Player.Listener {
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
-                        _playbackState.value = _playbackState.value.copy(isPlaying = isPlaying)
+                        updatePlaybackState()
                     }
 
                     override fun onPositionDiscontinuity(
@@ -202,14 +203,35 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
                         newPosition: Player.PositionInfo,
                         reason: Int
                     ) {
-                        _playbackState.value = _playbackState.value.copy(
-                            currentTrackIndex = currentMediaItemIndex,
-                            position = currentPosition,
-                            duration = duration
-                        )
+                        updatePlaybackState()
+                    }
+
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        updatePlaybackState()
+                    }
+
+                    override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                        if (playWhenReady) {
+                            viewModelScope.launch {
+                                while (isPlaying) {
+                                    updatePlaybackState()
+                                    delay(1000)
+                                }
+                            }
+                        }
                     }
                 })
             }
+        }
+    }
+
+    private fun updatePlaybackState() {
+        player?.let { player ->
+            _playbackState.value = _playbackState.value.copy(
+                currentTrackIndex = player.currentMediaItemIndex,
+                position = player.currentPosition,
+                duration = player.duration
+            )
         }
     }
 } 

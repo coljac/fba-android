@@ -2,6 +2,7 @@ package space.coljac.FreeAudio.ui.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
@@ -23,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import space.coljac.FreeAudio.viewmodel.AudioViewModel
 import space.coljac.FreeAudio.data.Talk
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,6 +34,7 @@ fun TalkDetailScreen(
     onNavigateUp: () -> Unit
 ) {
     var showDeleteConfirmation by remember { mutableStateOf(false) }
+    var isDownloading by remember { mutableStateOf(false) }
     
     LaunchedEffect(talkId) {
         viewModel.loadTalk(talkId)
@@ -41,6 +44,12 @@ fun TalkDetailScreen(
     val currentTalk by viewModel.currentTalk.collectAsState()
     val downloadProgress by viewModel.downloadProgress.collectAsState()
     val isDownloaded by viewModel.isDownloaded.collectAsState()
+
+    val downloadButtonText = when {
+        isDownloading -> "Downloading..."
+        isDownloaded -> "Delete"
+        else -> "Download"
+    }
 
     Scaffold(
         topBar = {
@@ -112,12 +121,16 @@ fun TalkDetailScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Button(
-                        onClick = { 
-                            // Only download, don't play
-                            if (!isDownloaded) viewModel.downloadTalk(talk) 
+                        onClick = {
+                            if (isDownloaded) {
+                                viewModel.deleteTalk(talk)
+                            } else {
+                                isDownloading = true
+                                viewModel.downloadTalk(talk)
+                            }
                         },
                         modifier = Modifier.weight(1f),
-                        enabled = !isDownloaded && downloadProgress == null
+                        enabled = !isDownloading && downloadProgress == null
                     ) {
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -129,7 +142,7 @@ fun TalkDetailScreen(
                                         modifier = Modifier.size(16.dp),
                                         strokeWidth = 2.dp
                                     )
-                                    Text("${(downloadProgress?.times(100))?.toInt()}%")
+                                    Text("Downloading... ${(downloadProgress?.times(100))?.toInt()}%")
                                 }
                                 isDownloaded -> {
                                     Icon(Icons.Default.Check, "Downloaded")
@@ -137,14 +150,16 @@ fun TalkDetailScreen(
                                 }
                                 else -> {
                                     Icon(Icons.Default.Download, "Download")
-                                    Text("Download")
+                                    Text(downloadButtonText)
                                 }
                             }
                         }
                     }
 
                     Button(
-                        onClick = { viewModel.playTalk(talk) },
+                        onClick = { 
+                            viewModel.togglePlayPause() 
+                        },
                         modifier = Modifier.weight(1f)
                     ) {
                         Row(
@@ -188,6 +203,23 @@ fun TalkDetailScreen(
                         Icon(Icons.Default.SkipNext, "Next Track")
                     }
                 }
+
+                // Add a linear progress indicator for playback
+                Spacer(modifier = Modifier.height(8.dp))
+                LinearProgressIndicator(
+                    progress = playbackState.position.toFloat() / playbackState.duration.coerceAtLeast(1),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                )
+                Text(
+                    text = "${formatDuration(playbackState.position)} / ${formatDuration(playbackState.duration)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    textAlign = TextAlign.Center
+                )
             }
         }
     }
@@ -218,4 +250,11 @@ fun TalkDetailScreen(
             }
         )
     }
+}
+
+private fun formatDuration(durationMs: Long): String {
+    val totalSeconds = durationMs / 1000
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return "%d:%02d".format(minutes, seconds)
 } 
