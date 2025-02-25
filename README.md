@@ -11,15 +11,17 @@ TODOs include:
 - Android Auto
 
 Bugs/enhancements:
-
-- Delete from downloaded talk talk details
 - No progress bar for audio playback
+- Download button doesn't change to downloading...
+- Download causes playback
+- Delete from downloaded talk "talk details" page
 - No track list on talk details screen and playback
 - Downloaded talks not working
 - Backend returning dodgy track lists, so we need to fetch from a different URL
 - No easy way to get home
-- No show me the latest sort of thing
 - No Download progress visible, buggy downloads
-- Android Auto
-- When playing audio, the play controls need to be visible on all pages
 - Can the playing audio be integrated into android so that it shows the audio controls on the lock screen?
+- Icon and headings
+- Rename from FreeAudio to Free Buddhist Audio
+- Show me the latest sort of thing on home
+- Android Auto
