@@ -6,6 +6,8 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -113,11 +115,26 @@ fun TalkDetailScreen(
                 ) {
                     Button(
                         onClick = { 
-                            // Only download, don't play
-                            if (!isDownloaded) viewModel.downloadTalk(talk) 
+                            if (isDownloaded) {
+                                // Show confirmation dialog if already downloaded
+                                showDeleteConfirmation = true
+                            } else if (downloadProgress == null) {
+                                // Start download if not already in progress
+                                viewModel.downloadTalk(talk) 
+                            }
                         },
                         modifier = Modifier.weight(1f),
-                        enabled = !isDownloaded && downloadProgress == null
+                        // Always enable the button, even when downloaded (for removal)
+                        enabled = downloadProgress == null,
+                        colors = if (isDownloaded) {
+                            // Use error color for the "Remove" button
+                            ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.error,
+                                contentColor = MaterialTheme.colorScheme.onError
+                            )
+                        } else {
+                            ButtonDefaults.buttonColors()
+                        }
                     ) {
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -125,17 +142,31 @@ fun TalkDetailScreen(
                         ) {
                             when {
                                 downloadProgress != null -> {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(16.dp),
-                                        strokeWidth = 2.dp
-                                    )
+                                    // Show progress bar during download
+                                    Column(
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text(
+                                            "Downloading...",
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                        LinearProgressIndicator(
+                                            progress = { downloadProgress ?: 0f },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(4.dp)
+                                                .padding(top = 4.dp)
+                                        )
+                                    }
                                     Text("${(downloadProgress?.times(100))?.toInt()}%")
                                 }
                                 isDownloaded -> {
-                                    Icon(Icons.Default.Check, "Downloaded")
-                                    Text("Downloaded")
+                                    // Show remove icon when downloaded
+                                    Icon(Icons.Default.Delete, "Remove Download")
+                                    Text("Remove")
                                 }
                                 else -> {
+                                    // Regular download button
                                     Icon(Icons.Default.Download, "Download")
                                     Text("Download")
                                 }
@@ -144,7 +175,7 @@ fun TalkDetailScreen(
                     }
 
                     Button(
-                        onClick = { viewModel.playTalk(talk) },
+                        onClick = { viewModel.toggleFavorite(talk) },
                         modifier = Modifier.weight(1f)
                     ) {
                         Row(
@@ -152,10 +183,10 @@ fun TalkDetailScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                if (playbackState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                "Play"
+                                if (talk.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                if (talk.isFavorite) "Remove from Favorites" else "Add to Favorites"
                             )
-                            Text(if (playbackState.isPlaying) "Pause" else "Play")
+                            Text(if (talk.isFavorite) "Favorited" else "Favorite")
                         }
                     }
                 }
@@ -196,19 +227,20 @@ fun TalkDetailScreen(
     if (showDeleteConfirmation) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirmation = false },
-            title = { Text("Delete Download") },
-            text = { Text("Are you sure you want to delete this downloaded talk?") },
+            title = { Text("Remove Download") },
+            text = { Text("Are you sure you want to remove this downloaded talk? You'll need to download it again to listen offline.") },
             confirmButton = {
                 TextButton(
                     onClick = {
                         currentTalk?.let { talk ->
                             viewModel.deleteTalk(talk)
-                            onNavigateUp()
+                            // We don't navigate up anymore - just stay on the page
+                            // The UI will update to show the Download button
                         }
                         showDeleteConfirmation = false
                     }
                 ) {
-                    Text("Delete")
+                    Text("Remove")
                 }
             },
             dismissButton = {

@@ -7,7 +7,8 @@ data class Talk(
     val year: String,
     val blurb: String,
     val imageUrl: String,
-    val tracks: List<Track>
+    val tracks: List<Track>,
+    val isFavorite: Boolean = false
 )
 
 data class Track(

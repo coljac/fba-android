@@ -6,7 +6,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -22,32 +21,21 @@ import space.coljac.FreeAudio.viewmodel.AudioViewModel
 fun HomeScreen(
     viewModel: AudioViewModel,
     onNavigateToSearch: () -> Unit,
+    onNavigateToFavorites: () -> Unit,
     onTalkSelected: (Talk) -> Unit
 ) {
-    val downloadedTalks by viewModel.downloadedTalks.collectAsState()
     val recentPlays by viewModel.recentPlays.collectAsState()
 
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("Free Buddhist Audio") }
+                title = { Text("Free Buddhist Audio") },
+                actions = {
+                    IconButton(onClick = onNavigateToSearch) {
+                        Icon(Icons.Default.Search, contentDescription = "Search")
+                    }
+                }
             )
-        },
-        floatingActionButton = {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                FloatingActionButton(
-                    onClick = { viewModel.refreshDownloads() }
-                ) {
-                    Icon(Icons.Default.Refresh, "Refresh Downloads")
-                }
-                FloatingActionButton(
-                    onClick = onNavigateToSearch
-                ) {
-                    Icon(Icons.Default.Search, "Search")
-                }
-            }
         }
     ) { padding ->
         LazyColumn(
@@ -55,45 +43,6 @@ fun HomeScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            if (downloadedTalks.isNotEmpty()) {
-                item {
-                    Text(
-                        "Downloaded Talks",
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(16.dp)
-                    )
-                }
-                
-                items(
-                    items = downloadedTalks,
-                    key = { "${it.id}_downloaded" }
-                ) { talk ->
-                    val dismissState = rememberSwipeToDismissBoxState(
-                        confirmValueChange = { dismissValue ->
-                            if (dismissValue == SwipeToDismissBoxValue.EndToStart) {
-                                viewModel.deleteTalk(talk)
-                                true
-                            } else false
-                        }
-                    )
-
-                    SwipeToDismissBox(
-                        state = dismissState,
-                        enableDismissFromEndToStart = true,
-                        enableDismissFromStartToEnd = false,
-                        backgroundContent = { DismissBackground() }
-                    ) {
-                        TalkItem(
-                            talk = talk,
-                            onPlayClick = { 
-                                viewModel.playTalk(it)
-                                onTalkSelected(it)
-                            }
-                        )
-                    }
-                }
-            }
-
             if (recentPlays.isNotEmpty()) {
                 item {
                     Text(
@@ -115,9 +64,7 @@ fun HomeScreen(
                         }
                     )
                 }
-            }
-
-            if (downloadedTalks.isEmpty() && recentPlays.isEmpty()) {
+            } else {
                 item {
                     Box(
                         modifier = Modifier
@@ -126,7 +73,7 @@ fun HomeScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            "Search and download talks to get started",
+                            "Search and play talks to see recent items",
                             style = MaterialTheme.typography.bodyLarge
                         )
                     }

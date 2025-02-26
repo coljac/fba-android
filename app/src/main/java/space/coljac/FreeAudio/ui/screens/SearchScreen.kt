@@ -23,7 +23,7 @@ fun SearchScreen(
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("Free Buddhist Audio") }
+                title = { Text("Search") }
             )
         }
     ) { padding ->

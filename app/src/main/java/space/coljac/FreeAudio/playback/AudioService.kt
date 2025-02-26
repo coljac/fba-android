@@ -4,10 +4,12 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.app.Service
 import android.content.Intent
 import androidx.core.app.NotificationCompat
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
@@ -39,6 +41,7 @@ class AudioService : MediaSessionService() {
                     .build(),
                 true
             )
+            .setHandleAudioBecomingNoisy(true) // Handle headphone disconnections
             .build()
 
         // Create MediaSession
@@ -58,7 +61,16 @@ class AudioService : MediaSessionService() {
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                 updateNotificationState()
             }
+            
             override fun onPlaybackStateChanged(playbackState: Int) {
+                updateNotificationState()
+            }
+            
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                updateNotificationState()
+            }
+            
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
                 updateNotificationState()
             }
         })
@@ -80,15 +92,36 @@ class AudioService : MediaSessionService() {
         if (player.isPlaying) {
             startForeground(NOTIFICATION_ID, notification)
         } else {
-            stopForeground(false)
+            stopForeground(Service.STOP_FOREGROUND_DETACH)
             notificationManager.notify(NOTIFICATION_ID, notification)
         }
     }
 
     private fun createForegroundNotification(mediaSession: MediaSession): Notification {
+        // Create play intent
+        val playIntent = PendingIntent.getService(
+            this,
+            1,
+            Intent(this, AudioService::class.java).setAction("ACTION_PLAY"),
+            PendingIntent.FLAG_IMMUTABLE
+        )
+        
+        // Create pause intent
+        val pauseIntent = PendingIntent.getService(
+            this,
+            2,
+            Intent(this, AudioService::class.java).setAction("ACTION_PAUSE"),
+            PendingIntent.FLAG_IMMUTABLE
+        )
+        
+        val currentItem = player.currentMediaItem
+        val title = currentItem?.mediaMetadata?.title ?: "FreeAudio"
+        val artist = currentItem?.mediaMetadata?.artist ?: "Unknown"
+        
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("FreeAudio")
-            .setContentText(if (player.isPlaying) "Playing" else "Paused")
+            .setContentTitle(title)
+            .setContentText(artist)
+            .setSubText(if (player.isPlaying) "Playing" else "Paused")
             .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(
                 PendingIntent.getActivity(
@@ -99,6 +132,13 @@ class AudioService : MediaSessionService() {
                 )
             )
             .setOngoing(player.isPlaying)
+            .addAction(
+                if (player.isPlaying) R.drawable.ic_pause else R.drawable.ic_play,
+                if (player.isPlaying) "Pause" else "Play",
+                if (player.isPlaying) pauseIntent else playIntent
+            )
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build()
     }
 
@@ -106,8 +146,14 @@ class AudioService : MediaSessionService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            "ACTION_PLAY" -> player.play()
-            "ACTION_PAUSE" -> player.pause()
+            "ACTION_PLAY" -> {
+                player.play()
+                updateNotificationState()
+            }
+            "ACTION_PAUSE" -> {
+                player.pause()
+                updateNotificationState()
+            }
         }
         return super.onStartCommand(intent, flags, startId)
     }

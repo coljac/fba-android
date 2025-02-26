@@ -3,6 +3,7 @@ package space.coljac.FreeAudio.ui.components
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -48,10 +49,24 @@ fun TalkItem(
                     text = "${talk.speaker} (${talk.year})",
                     style = MaterialTheme.typography.bodyMedium
                 )
-                Text(
-                    text = "${talk.tracks.size} track${if (talk.tracks.size != 1) "s" else ""} • ${talk.year}",
-                    style = MaterialTheme.typography.bodySmall
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "${talk.tracks.size} track${if (talk.tracks.size != 1) "s" else ""} • ${talk.year}",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(1f)
+                    )
+                    
+                    if (talk.isFavorite) {
+                        Icon(
+                            Icons.Default.Favorite,
+                            contentDescription = "Favorited",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
             }
             
             IconButton(onClick = { onPlayClick(talk) }) {
