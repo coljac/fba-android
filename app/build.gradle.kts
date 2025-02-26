@@ -66,6 +66,9 @@ dependencies {
     implementation("androidx.media3:media3-session:1.5.1")
     implementation("androidx.media3:media3-common:1.5.1")
     implementation("androidx.media3:media3-ui:1.5.1")
+    
+    // Media Compat for notification styling
+    implementation("androidx.media:media:1.7.0")
 
 
 

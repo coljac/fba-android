@@ -1,6 +1,9 @@
 package space.coljac.FreeAudio.viewmodel
 
 import android.app.Application
+import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -94,6 +97,8 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
                 } else {
                     Uri.parse(track.path)
                 }
+                
+                // Create rich metadata for the media session and lock screen controls
                 MediaItem.Builder()
                     .setUri(uri)
                     .setMediaMetadata(
@@ -102,20 +107,32 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
                             .setArtist(talk.speaker)
                             .setAlbumTitle(talk.title)
                             .setArtworkUri(Uri.parse(talk.imageUrl))
+                            .setDisplayTitle(track.title)
+                            .setSubtitle(talk.speaker)
+                            // Note: We're keeping it simpler for compatibility
                             .build()
                     )
                     .build()
             }
+            
+            // Set media items and prepare the player
             setMediaItems(mediaItems)
             prepare()
-            // Don't automatically play, just prepare the player
-            // The user will need to press play to start playback
+            
+            // Start audio service explicitly to ensure media playback controls work
+            startAudioService()
         }
         
         viewModelScope.launch {
             repository.addToRecentPlays(talk)
             _recentPlays.value = repository.getRecentPlays()
         }
+    }
+    
+    private fun startAudioService() {
+        val context = getApplication<Application>().applicationContext
+        val intent = Intent(context, Class.forName("space.coljac.FreeAudio.playback.AudioService"))
+        context.startService(intent)
     }
     
     fun setCurrentTalk(talk: Talk) {
@@ -127,34 +144,85 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
 
     fun togglePlayPause() {
         player?.let {
+            // Start the service first to ensure it's running
+            startAudioService()
+            
+            val context = getApplication<Application>().applicationContext
+            val intent = Intent(context, Class.forName("space.coljac.FreeAudio.playback.AudioService"))
+            
             if (it.isPlaying) {
+                // Send pause command to the service
+                intent.action = "ACTION_PAUSE"
+                context.startService(intent)
+                
                 it.pause()
                 _playbackState.value = _playbackState.value.copy(isPlaying = false)
             } else {
+                // Send play command to the service
+                intent.action = "ACTION_PLAY"
+                context.startService(intent)
+                
                 it.play()
                 _playbackState.value = _playbackState.value.copy(isPlaying = true)
             }
+            
             // Update all aspects of playback state for consistency
             updatePlaybackState()
         }
     }
 
     fun seekForward() {
+        startAudioService()
+        
+        // Send command to service
+        val context = getApplication<Application>().applicationContext
+        val intent = Intent(context, Class.forName("space.coljac.FreeAudio.playback.AudioService"))
+        intent.action = "ACTION_SKIP_FORWARD"
+        context.startService(intent)
+        
+        // Update local player
         player?.seekForward()
         updatePlaybackState()
     }
 
     fun seekBackward() {
+        startAudioService()
+        
+        // Send command to service
+        val context = getApplication<Application>().applicationContext
+        val intent = Intent(context, Class.forName("space.coljac.FreeAudio.playback.AudioService"))
+        intent.action = "ACTION_SKIP_BACKWARD"
+        context.startService(intent)
+        
+        // Update local player
         player?.seekBack()
         updatePlaybackState()
     }
 
     fun skipToNextTrack() {
+        startAudioService()
+        
+        // Send command to service
+        val context = getApplication<Application>().applicationContext
+        val intent = Intent(context, Class.forName("space.coljac.FreeAudio.playback.AudioService"))
+        intent.action = "ACTION_NEXT"
+        context.startService(intent)
+        
+        // Update local player
         player?.seekToNextMediaItem()
         updatePlaybackState()
     }
 
     fun skipToPreviousTrack() {
+        startAudioService()
+        
+        // Send command to service
+        val context = getApplication<Application>().applicationContext
+        val intent = Intent(context, Class.forName("space.coljac.FreeAudio.playback.AudioService"))
+        intent.action = "ACTION_PREVIOUS"
+        context.startService(intent)
+        
+        // Update local player
         player?.seekToPreviousMediaItem()
         updatePlaybackState()
     }
@@ -285,9 +353,21 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     }
     
     override fun onCleared() {
+        stopAudioService()
         player?.release()
         player = null
         super.onCleared()
+    }
+    
+    private fun stopAudioService() {
+        // Stop the media service when the ViewModel is cleared
+        try {
+            val context = getApplication<Application>().applicationContext
+            val intent = Intent(context, Class.forName("space.coljac.FreeAudio.playback.AudioService"))
+            context.stopService(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping service", e)
+        }
     }
 
     private fun initializePlayer() {
@@ -315,6 +395,74 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 })
             }
+        }
+    }
+    
+    /**
+     * Method to synchronize playback state with the service
+     * This allows Bluetooth and lock screen controls to correctly sync with the UI
+     */
+    fun syncPlaybackState(isPlaying: Boolean) {
+        Log.d(TAG, "Syncing external playback state change: isPlaying=$isPlaying")
+        
+        // Update local player state if there's a mismatch
+        player?.let { exoPlayer ->
+            Log.d(TAG, "Current local player state: isPlaying=${exoPlayer.isPlaying}, " +
+                      "playWhenReady=${exoPlayer.playWhenReady}, " +
+                      "playbackState=${playbackStateToString(exoPlayer.playbackState)}")
+            
+            if (exoPlayer.isPlaying != isPlaying) {
+                try {
+                    if (isPlaying) {
+                        // Use multiple methods to ensure playback starts
+                        Log.d(TAG, "Starting playback in local player")
+                        
+                        // Make sure we're prepared
+                        if (exoPlayer.playbackState == Player.STATE_IDLE) {
+                            exoPlayer.prepare()
+                        }
+                        
+                        // Method 1: Use play()
+                        exoPlayer.play()
+                        
+                        // Method 2: Set playWhenReady directly
+                        exoPlayer.playWhenReady = true
+                    } else {
+                        // Use multiple methods to ensure playback stops
+                        Log.d(TAG, "Pausing playback in local player")
+                        
+                        // Method 1: Use pause()
+                        exoPlayer.pause()
+                        
+                        // Method 2: Set playWhenReady directly
+                        exoPlayer.playWhenReady = false
+                    }
+                    
+                    // Force update UI state immediately
+                    _playbackState.value = _playbackState.value.copy(isPlaying = isPlaying)
+                    
+                    // Re-check after a delay to ensure the state actually changed
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        Log.d(TAG, "Verifying player state change: local player isPlaying=${exoPlayer.isPlaying}")
+                        _playbackState.value = _playbackState.value.copy(isPlaying = exoPlayer.isPlaying)
+                    }, 200)
+                    
+                    Log.d(TAG, "Local player state updated to match service: isPlaying=$isPlaying")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error syncing playback state", e)
+                }
+            }
+        }
+    }
+    
+    // Helper to convert player state to string for logging
+    private fun playbackStateToString(state: Int): String {
+        return when (state) {
+            Player.STATE_IDLE -> "STATE_IDLE"
+            Player.STATE_BUFFERING -> "STATE_BUFFERING"
+            Player.STATE_READY -> "STATE_READY"
+            Player.STATE_ENDED -> "STATE_ENDED"
+            else -> "UNKNOWN"
         }
     }
     
