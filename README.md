@@ -1,5 +1,7 @@
 # FreeBuddhistAudio Android app
 
+![Screenshot](screen.png)
+
 An Android client for freebuddhistaudio.com.
 
 Current status: **borked** (search works, downloading and playback mostly works, lots of bugs)
