@@ -1,5 +1,6 @@
 package space.coljac.FreeAudio.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -25,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import space.coljac.FreeAudio.viewmodel.AudioViewModel
 import space.coljac.FreeAudio.data.Talk
+import space.coljac.FreeAudio.data.Track
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,6 +38,7 @@ fun TalkDetailScreen(
     var showDeleteConfirmation by remember { mutableStateOf(false) }
     
     LaunchedEffect(talkId) {
+        android.util.Log.d("TalkDetailScreen", "Loading talk with ID: $talkId")
         viewModel.loadTalk(talkId)
     }
 
@@ -105,6 +108,38 @@ fun TalkDetailScreen(
                 )
 
                 Spacer(modifier = Modifier.height(24.dp))
+                
+                // Track List
+                android.util.Log.d("TalkDetailScreen", "Talk has ${talk.tracks.size} tracks")
+                if (talk.tracks.isNotEmpty()) {
+                    android.util.Log.d("TalkDetailScreen", "Displaying track list")
+                    Text(
+                        text = "Tracks (${talk.tracks.size})",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // List of tracks
+                    Column(
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        talk.tracks.forEachIndexed { index, track ->
+                            val isCurrentTrack = 
+                                playbackState.currentTrackIndex == index && 
+                                currentTalk?.id == talk.id
+                                
+                            TrackItem(
+                                track = track,
+                                trackIndex = index,
+                                isPlaying = isCurrentTrack && playbackState.isPlaying,
+                                onClick = { viewModel.playTrack(index) }
+                            )
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
 
                 // Download/Play Section
                 Row(
@@ -249,5 +284,79 @@ fun TalkDetailScreen(
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun TrackItem(
+    track: Track,
+    trackIndex: Int,
+    isPlaying: Boolean,
+    onClick: () -> Unit
+) {
+    android.util.Log.d("TrackItem", "Rendering track: ${track.title}, index: $trackIndex, isPlaying: $isPlaying")
+    
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clickable { onClick() },
+        colors = CardDefaults.cardColors(
+            containerColor = if (isPlaying) 
+                MaterialTheme.colorScheme.primaryContainer 
+            else 
+                MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Track number or Play/Pause icon
+            if (isPlaying) {
+                Icon(
+                    imageVector = Icons.Default.Pause,
+                    contentDescription = "Currently Playing",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .size(24.dp)
+                        .padding(end = 8.dp)
+                )
+            } else {
+                Text(
+                    text = "${trackIndex + 1}.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.width(32.dp)
+                )
+            }
+            
+            // Track title and duration
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = track.title.ifEmpty { "Track ${trackIndex + 1}" },
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                
+                Text(
+                    text = if (track.duration.isNotEmpty()) track.duration else "Unknown duration",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            
+            // Play button
+            IconButton(onClick = onClick) {
+                Icon(
+                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = if (isPlaying) "Pause" else "Play"
+                )
+            }
+        }
     }
 } 

@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 import space.coljac.FreeAudio.data.SearchResponse
 import space.coljac.FreeAudio.data.SearchState
 import space.coljac.FreeAudio.data.Talk
+import space.coljac.FreeAudio.data.Track
 import space.coljac.FreeAudio.network.FBAService
 import space.coljac.FreeAudio.data.TalkRepository
 import java.io.File
@@ -56,7 +57,8 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         val isPlaying: Boolean = false,
         val currentTrackIndex: Int = 0,
         val position: Long = 0,
-        val duration: Long = 0
+        val duration: Long = 0,
+        val currentTrack: Track? = null
     )
 
     init {
@@ -85,7 +87,7 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
     
-    fun playTalk(talk: Talk) {
+    fun playTalk(talk: Talk, startTrackIndex: Int = 0) {
         setCurrentTalk(talk)
         initializePlayer()
         
@@ -117,6 +119,21 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
             
             // Set media items and prepare the player
             setMediaItems(mediaItems)
+            
+            // Set the initial track (only if we have tracks)
+            if (talk.tracks.isNotEmpty()) {
+                val validTrackIndex = startTrackIndex.coerceIn(0, talk.tracks.size - 1)
+                if (validTrackIndex > 0) {
+                    seekTo(validTrackIndex, 0)
+                }
+                
+                // Update current track in playback state
+                _playbackState.value = _playbackState.value.copy(
+                    currentTrackIndex = validTrackIndex,
+                    currentTrack = talk.tracks[validTrackIndex]
+                )
+            }
+            
             prepare()
             
             // Start audio service explicitly to ensure media playback controls work
@@ -168,6 +185,37 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
             
             // Update all aspects of playback state for consistency
             updatePlaybackState()
+        }
+    }
+    
+    fun playTrack(trackIndex: Int) {
+        _currentTalk.value?.let { talk ->
+            // First check if there are any tracks to play
+            if (talk.tracks.isEmpty()) {
+                Log.w(TAG, "Attempted to play track but talk has no tracks")
+                return@let
+            }
+            
+            if (trackIndex >= 0 && trackIndex < talk.tracks.size) {
+                // If player is already initialized with this talk
+                if (player?.mediaItemCount == talk.tracks.size) {
+                    player?.seekTo(trackIndex, 0)
+                    player?.play()
+                    
+                    // Send play command to service
+                    val context = getApplication<Application>().applicationContext
+                    val intent = Intent(context, Class.forName("space.coljac.FreeAudio.playback.AudioService"))
+                    intent.action = "ACTION_PLAY"
+                    context.startService(intent)
+                    
+                    updatePlaybackState()
+                } else {
+                    // Initialize player with this talk starting at the selected track
+                    playTalk(talk, trackIndex)
+                }
+            } else {
+                Log.w(TAG, "Invalid track index: $trackIndex (valid range is 0-${talk.tracks.size - 1})")
+            }
         }
     }
 
@@ -468,11 +516,18 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     
     private fun updatePlaybackState() {
         player?.let { exoPlayer ->
+            // Get the current track based on the media item index
+            val currentTrack = _currentTalk.value?.let { talk ->
+                val index = exoPlayer.currentMediaItemIndex
+                if (index >= 0 && index < talk.tracks.size) talk.tracks[index] else null
+            }
+            
             _playbackState.value = _playbackState.value.copy(
                 isPlaying = exoPlayer.isPlaying,
                 currentTrackIndex = exoPlayer.currentMediaItemIndex,
                 position = exoPlayer.currentPosition,
-                duration = exoPlayer.duration
+                duration = exoPlayer.duration,
+                currentTrack = currentTrack
             )
         }
     }

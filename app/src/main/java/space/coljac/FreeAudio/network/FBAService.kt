@@ -126,4 +126,114 @@ class FBAService {
     suspend fun getAudioUrl(talkId: String): String = withContext(Dispatchers.IO) {
         "$baseUrl/talks/mp3zips/$talkId.zip"
     }
+    
+    suspend fun getTalkDetails(talkId: String): Talk? = withContext(Dispatchers.IO) {
+        try {
+            val url = "$baseUrl/audio/details?num=$talkId"
+            val response = URL(url).readText()
+            
+            Log.d(TAG, "Fetched talk details from $url")
+            
+            // Extract talk data from the JavaScript object
+            val jsonStart = response.indexOf("document.__FBA__.talk = ")
+            if (jsonStart == -1) {
+                Log.e(TAG, "Could not find talk JSON start marker in response")
+                return@withContext null
+            }
+            
+            val jsonStartIndex = jsonStart + "document.__FBA__.talk = ".length
+            val jsonEndIndex = response.indexOf(";", jsonStartIndex)
+            if (jsonEndIndex == -1) {
+                Log.e(TAG, "Could not find talk JSON end marker in response")
+                return@withContext null
+            }
+            
+            val jsonStr = response.substring(jsonStartIndex, jsonEndIndex).trim()
+            Log.d(TAG, "Found talk details JSON, length: ${jsonStr.length}")
+            
+            try {
+                val talkObject = gson.fromJson(jsonStr, JsonObject::class.java)
+                Log.d(TAG, "Successfully parsed talk object for ID: $talkId")
+                
+                // Extract track list
+                val tracksArray = talkObject.getAsJsonArray("tracks")
+                Log.d(TAG, "Found tracks array with ${tracksArray?.size() ?: 0} tracks")
+                
+                val tracks = if (tracksArray != null && tracksArray.size() > 0) {
+                    tracksArray.mapIndexed { index, trackElement ->
+                        try {
+                            val track = trackElement.asJsonObject
+                            
+                            // Log the raw track JSON for debugging
+                            Log.d(TAG, "Raw track ${index + 1} JSON: ${track.toString()}")
+                            
+                            val audioObj = track.getAsJsonObject("audio")
+                            val mp3Path = audioObj.get("mp3").asString
+                            
+                            val title = if (track.has("title")) {
+                                track.get("title").asString
+                            } else {
+                                "Track ${index + 1}"
+                            }
+                            
+                            // Get duration
+                            val durationSeconds = if (track.has("durationSeconds")) {
+                                track.get("durationSeconds").asInt
+                            } else {
+                                0
+                            }
+                            
+                            // Get trackId
+                            val trackId = if (track.has("trackId")) {
+                                track.get("trackId").asString
+                            } else {
+                                "track_${index}"
+                            }
+                            
+                            Log.d(TAG, "Parsed track ${index + 1}: $title, path: $mp3Path, duration: $durationSeconds seconds")
+                            
+                            Track(
+                                title = decodeHtml(title),
+                                number = index + 1, // 1-based index
+                                path = "$baseUrl$mp3Path",
+                                duration = formatDuration(durationSeconds),
+                                durationSeconds = durationSeconds,
+                                trackId = trackId
+                            )
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error parsing track at index $index: ${e.message}")
+                            null
+                        }
+                    }.filterNotNull()
+                } else {
+                    Log.w(TAG, "No tracks found for talk ${talkObject.get("cat_num").asString}")
+                    emptyList()
+                }
+                
+                return@withContext Talk(
+                    id = talkObject.get("cat_num").asString,
+                    title = decodeHtml(talkObject.get("title").asString),
+                    speaker = decodeHtml(talkObject.get("speaker").asString),
+                    year = talkObject.get("year").asString,
+                    blurb = decodeHtml(talkObject.get("blurb").asString),
+                    imageUrl = baseUrl + talkObject.get("image").asString,
+                    tracks = tracks,
+                    isFavorite = false // This will be updated by the repository
+                )
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "Error parsing talk details JSON", e)
+                null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching talk details", e)
+            null
+        }
+    }
+    
+    private fun formatDuration(seconds: Int): String {
+        val minutes = seconds / 60
+        val remainingSeconds = seconds % 60
+        return "$minutes:${remainingSeconds.toString().padStart(2, '0')}"
+    }
 } 

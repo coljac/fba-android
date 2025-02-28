@@ -15,7 +15,9 @@ data class Track(
     val title: String,
     val number: Int,
     val path: String,
-    val duration: String
+    val duration: String,
+    val durationSeconds: Int = 0,
+    val trackId: String = ""
 )
 
 data class SearchResponse(
