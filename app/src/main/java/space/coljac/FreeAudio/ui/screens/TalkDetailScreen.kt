@@ -1,7 +1,12 @@
 package space.coljac.FreeAudio.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
@@ -120,11 +125,13 @@ fun TalkDetailScreen(
                     
                     Spacer(modifier = Modifier.height(8.dp))
                     
-                    // List of tracks
-                    Column(
-                        modifier = Modifier.fillMaxWidth()
+                    // List of tracks in a scrollable container with fixed height
+                    androidx.compose.foundation.lazy.LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(240.dp) // Fixed height to prevent pushing controls off screen
                     ) {
-                        talk.tracks.forEachIndexed { index, track ->
+                        itemsIndexed(talk.tracks) { index, track ->
                             val isCurrentTrack = 
                                 playbackState.currentTrackIndex == index && 
                                 currentTalk?.id == talk.id
@@ -294,7 +301,7 @@ private fun TrackItem(
     isPlaying: Boolean,
     onClick: () -> Unit
 ) {
-    android.util.Log.d("TrackItem", "Rendering track: ${track.title}, index: $trackIndex, isPlaying: $isPlaying")
+    // No need for this state, we'll use the isPlaying parameter directly
     
     Card(
         modifier = Modifier
@@ -308,54 +315,80 @@ private fun TrackItem(
                 MaterialTheme.colorScheme.surfaceVariant
         )
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(vertical = 4.dp)
         ) {
-            // Track number or Play/Pause icon
-            if (isPlaying) {
-                Icon(
-                    imageVector = Icons.Default.Pause,
-                    contentDescription = "Currently Playing",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .size(24.dp)
-                        .padding(end = 8.dp)
-                )
-            } else {
-                Text(
-                    text = "${trackIndex + 1}.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.width(32.dp)
-                )
-            }
-            
-            // Track title and duration
-            Column(
-                modifier = Modifier.weight(1f)
+            // Track content
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = track.title.ifEmpty { "Track ${trackIndex + 1}" },
-                    style = MaterialTheme.typography.bodyLarge,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
+                // Track number or Play/Pause icon
+                if (isPlaying) {
+                    Icon(
+                        imageVector = Icons.Default.Pause,
+                        contentDescription = "Currently Playing",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .size(24.dp)
+                            .padding(end = 8.dp)
+                    )
+                } else {
+                    Text(
+                        text = "${trackIndex + 1}.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.width(32.dp)
+                    )
+                }
                 
-                Text(
-                    text = if (track.duration.isNotEmpty()) track.duration else "Unknown duration",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                // Track title and duration
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = track.title.ifEmpty { "Track ${trackIndex + 1}" },
+                        style = MaterialTheme.typography.bodyLarge,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        color = if (isPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                    )
+                    
+                    Text(
+                        text = if (track.duration.isNotEmpty()) track.duration else "Unknown duration",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (isPlaying) MaterialTheme.colorScheme.primary.copy(alpha = 0.8f) 
+                               else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                
+                // Play button
+                IconButton(onClick = onClick) {
+                    Icon(
+                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (isPlaying) "Pause" else "Play"
+                    )
+                }
             }
             
-            // Play button
-            IconButton(onClick = onClick) {
-                Icon(
-                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = if (isPlaying) "Pause" else "Play"
-                )
+            // Progress indicator (only visible when playing)
+            if (isPlaying) {
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = true,
+                    enter = androidx.compose.animation.fadeIn(),
+                    exit = androidx.compose.animation.fadeOut()
+                ) {
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(2.dp)
+                            .padding(horizontal = 8.dp),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
     }
