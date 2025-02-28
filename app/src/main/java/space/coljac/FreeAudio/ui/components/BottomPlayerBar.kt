@@ -17,10 +17,16 @@ import space.coljac.FreeAudio.viewmodel.AudioViewModel
 fun BottomPlayerBar(
     viewModel: AudioViewModel,
     onTalkClick: (Talk) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    currentScreen: String = ""
 ) {
     val currentTalk by viewModel.currentTalk.collectAsState()
     val playbackState by viewModel.playbackState.collectAsState()
+
+    // Don't show bottom player bar on talk detail screen
+    if (currentScreen == "TalkDetail") {
+        return
+    }
 
     currentTalk?.let { talk ->
         Surface(

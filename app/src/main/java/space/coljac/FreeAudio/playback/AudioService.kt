@@ -573,13 +573,15 @@ class AudioService : MediaSessionService() {
             }
             "ACTION_SKIP_FORWARD" -> {
                 Log.d(TAG, "Handling ACTION_SKIP_FORWARD")
-                player.seekForward()
+                val newPosition = player.currentPosition + 10000
+                player.seekTo(newPosition)
                 updateMediaSessionState()
                 updateNotificationState()
             }
             "ACTION_SKIP_BACKWARD" -> {
                 Log.d(TAG, "Handling ACTION_SKIP_BACKWARD")
-                player.seekBack()
+                val newPosition = (player.currentPosition - 10000).coerceAtLeast(0)
+                player.seekTo(newPosition)
                 updateMediaSessionState()
                 updateNotificationState()
             }

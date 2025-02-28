@@ -4,6 +4,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -106,13 +108,25 @@ fun TalkDetailScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Description
+                // Description in a scrollable container with max height
+                Text(
+                    text = "Description",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                
+                Spacer(modifier = Modifier.height(4.dp))
+                
+                val scrollState = rememberScrollState()
                 Text(
                     text = talk.blurb,
-                    style = MaterialTheme.typography.bodyMedium
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 100.dp)
+                        .verticalScroll(scrollState)
                 )
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(16.dp))
                 
                 // Track List
                 android.util.Log.d("TalkDetailScreen", "Talk has ${talk.tracks.size} tracks")
@@ -125,11 +139,11 @@ fun TalkDetailScreen(
                     
                     Spacer(modifier = Modifier.height(8.dp))
                     
-                    // List of tracks in a scrollable container with fixed height
+                    // List of tracks in a scrollable container with adaptive height
                     androidx.compose.foundation.lazy.LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(240.dp) // Fixed height to prevent pushing controls off screen
+                            .height(180.dp) // Reduced height to leave more room for controls
                     ) {
                         itemsIndexed(talk.tracks) { index, track ->
                             val isCurrentTrack = 
@@ -148,14 +162,24 @@ fun TalkDetailScreen(
                     Spacer(modifier = Modifier.height(16.dp))
                 }
 
-                // Download/Play Section
+                // Divider between tracks and actions
+                androidx.compose.material3.HorizontalDivider(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    thickness = 1.dp,
+                    color = MaterialTheme.colorScheme.surfaceVariant
+                )
+                
+                // Download/Favorite Row
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 16.dp),
+                        .padding(vertical = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Button(
+                    // Download button
+                    OutlinedButton(
                         onClick = { 
                             if (isDownloaded) {
                                 // Show confirmation dialog if already downloaded
@@ -170,72 +194,87 @@ fun TalkDetailScreen(
                         enabled = downloadProgress == null,
                         colors = if (isDownloaded) {
                             // Use error color for the "Remove" button
-                            ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.error,
-                                contentColor = MaterialTheme.colorScheme.onError
+                            ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error
                             )
                         } else {
-                            ButtonDefaults.buttonColors()
+                            ButtonDefaults.outlinedButtonColors()
                         }
                     ) {
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             when {
                                 downloadProgress != null -> {
                                     // Show progress bar during download
-                                    Column(
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Text(
-                                            "Downloading...",
-                                            style = MaterialTheme.typography.bodySmall
-                                        )
-                                        LinearProgressIndicator(
-                                            progress = { downloadProgress ?: 0f },
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(4.dp)
-                                                .padding(top = 4.dp)
-                                        )
-                                    }
-                                    Text("${(downloadProgress?.times(100))?.toInt()}%")
+                                    LinearProgressIndicator(
+                                        progress = { downloadProgress ?: 0f },
+                                        modifier = Modifier
+                                            .width(24.dp)
+                                            .height(2.dp)
+                                    )
+                                    Text(
+                                        "Downloading ${(downloadProgress?.times(100))?.toInt()}%",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
                                 }
                                 isDownloaded -> {
                                     // Show remove icon when downloaded
-                                    Icon(Icons.Default.Delete, "Remove Download")
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        "Remove Download",
+                                        modifier = Modifier.size(16.dp)
+                                    )
                                     Text("Remove")
                                 }
                                 else -> {
                                     // Regular download button
-                                    Icon(Icons.Default.Download, "Download")
+                                    Icon(
+                                        Icons.Default.Download,
+                                        "Download",
+                                        modifier = Modifier.size(16.dp)
+                                    )
                                     Text("Download")
                                 }
                             }
                         }
                     }
 
-                    Button(
+                    // Favorite button
+                    OutlinedButton(
                         onClick = { viewModel.toggleFavorite(talk) },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        colors = if (talk.isFavorite) {
+                            ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.primary
+                            )
+                        } else {
+                            ButtonDefaults.outlinedButtonColors()
+                        }
                     ) {
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
                                 if (talk.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                if (talk.isFavorite) "Remove from Favorites" else "Add to Favorites"
+                                if (talk.isFavorite) "Remove from Favorites" else "Add to Favorites",
+                                modifier = Modifier.size(16.dp)
                             )
                             Text(if (talk.isFavorite) "Favorited" else "Favorite")
                         }
                     }
                 }
-
-                // Playback Controls
+                
+                // Push playback controls to bottom with spacer
+                Spacer(modifier = Modifier.weight(1f))
+                
+                // Playback Controls at bottom
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 16.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -243,7 +282,7 @@ fun TalkDetailScreen(
                         Icon(Icons.Default.SkipPrevious, "Previous Track")
                     }
                     IconButton(onClick = { viewModel.seekBackward() }) {
-                        Icon(Icons.Rounded.FastRewind, "Seek Backward")
+                        Icon(Icons.Default.Replay10, "Skip Back 10 Seconds")
                     }
                     FilledIconButton(
                         onClick = { viewModel.togglePlayPause() }
@@ -255,12 +294,13 @@ fun TalkDetailScreen(
                         )
                     }
                     IconButton(onClick = { viewModel.seekForward() }) {
-                        Icon(Icons.Rounded.FastForward, "Seek Forward")
+                        Icon(Icons.Default.Forward10, "Skip Forward 10 Seconds")
                     }
                     IconButton(onClick = { viewModel.skipToNextTrack() }) {
                         Icon(Icons.Default.SkipNext, "Next Track")
                     }
                 }
+
             }
         }
     }

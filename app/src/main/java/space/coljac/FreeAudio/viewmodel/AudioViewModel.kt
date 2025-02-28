@@ -228,8 +228,11 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         intent.action = "ACTION_SKIP_FORWARD"
         context.startService(intent)
         
-        // Update local player
-        player?.seekForward()
+        // Update local player - seek forward 10 seconds
+        player?.let { 
+            val newPosition = it.currentPosition + 10000
+            it.seekTo(newPosition)
+        }
         updatePlaybackState()
     }
 
@@ -242,8 +245,11 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         intent.action = "ACTION_SKIP_BACKWARD"
         context.startService(intent)
         
-        // Update local player
-        player?.seekBack()
+        // Update local player - seek backward 10 seconds
+        player?.let {
+            val newPosition = (it.currentPosition - 10000).coerceAtLeast(0)
+            it.seekTo(newPosition)
+        }
         updatePlaybackState()
     }
 

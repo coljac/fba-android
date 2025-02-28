@@ -149,7 +149,8 @@ fun AppNavigation(
                     },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = if (showBottomNav) 64.dp else 0.dp)
+                        .padding(bottom = if (showBottomNav) 64.dp else 0.dp),
+                    currentScreen = if (currentRoute?.startsWith("talk/") == true) "TalkDetail" else ""
                 )
                 
                 if (showBottomNav) {
