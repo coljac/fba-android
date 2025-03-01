@@ -34,6 +34,7 @@ import coil.compose.AsyncImage
 import space.coljac.FreeAudio.viewmodel.AudioViewModel
 import space.coljac.FreeAudio.data.Talk
 import space.coljac.FreeAudio.data.Track
+import androidx.compose.foundation.layout.Box
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,77 +76,78 @@ fun TalkDetailScreen(
             )
         }
     ) { padding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp)
         ) {
-            currentTalk?.let { talk ->
-                // Talk Info
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    AsyncImage(
-                        model = talk.imageUrl,
-                        contentDescription = "Speaker",
-                        modifier = Modifier
-                            .size(80.dp)
-                            .padding(end = 16.dp)
-                    )
-                    Column {
-                        Text(
-                            text = talk.title,
-                            style = MaterialTheme.typography.titleLarge
+            // Main content scrollable area
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp)
+                    // Leave space at bottom for the player controls
+                    .padding(bottom = 84.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                currentTalk?.let { talk ->
+                    // Talk Info
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        AsyncImage(
+                            model = talk.imageUrl,
+                            contentDescription = "Speaker",
+                            modifier = Modifier
+                                .size(80.dp)
+                                .padding(end = 16.dp)
                         )
-                        Text(
-                            text = "${talk.speaker} (${talk.year})",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
+                        Column {
+                            Text(
+                                text = talk.title,
+                                style = MaterialTheme.typography.titleLarge
+                            )
+                            Text(
+                                text = "${talk.speaker} (${talk.year})",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
                     }
-                }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                // Description in a scrollable container with max height
-                Text(
-                    text = "Description",
-                    style = MaterialTheme.typography.titleMedium
-                )
-                
-                Spacer(modifier = Modifier.height(4.dp))
-                
-                val scrollState = rememberScrollState()
-                Text(
-                    text = talk.blurb,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 100.dp)
-                        .verticalScroll(scrollState)
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                // Track List
-                android.util.Log.d("TalkDetailScreen", "Talk has ${talk.tracks.size} tracks")
-                if (talk.tracks.isNotEmpty()) {
-                    android.util.Log.d("TalkDetailScreen", "Displaying track list")
+                    // Description
                     Text(
-                        text = "Tracks (${talk.tracks.size})",
+                        text = "Description",
                         style = MaterialTheme.typography.titleMedium
                     )
                     
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
                     
-                    // List of tracks in a scrollable container with adaptive height
-                    androidx.compose.foundation.lazy.LazyColumn(
+                    val scrollState = rememberScrollState()
+                    Text(
+                        text = talk.blurb,
+                        style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(180.dp) // Reduced height to leave more room for controls
-                    ) {
-                        itemsIndexed(talk.tracks) { index, track ->
+                            .heightIn(max = 100.dp)
+                            .verticalScroll(scrollState)
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    // Track List
+                    if (talk.tracks.isNotEmpty()) {
+                        Text(
+                            text = "Tracks (${talk.tracks.size})",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        // Display tracks directly in the scrollable column
+                        talk.tracks.forEachIndexed { index, track ->
                             val isCurrentTrack = 
                                 playbackState.currentTrackIndex == index && 
                                 currentTalk?.id == talk.id
@@ -156,121 +158,121 @@ fun TalkDetailScreen(
                                 isPlaying = isCurrentTrack && playbackState.isPlaying,
                                 onClick = { viewModel.playTrack(index) }
                             )
+                            
+                            Spacer(modifier = Modifier.height(4.dp))
                         }
                     }
                     
+                    // Download/Favorite buttons
                     Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Download button
+                        OutlinedButton(
+                            onClick = { 
+                                if (isDownloaded) {
+                                    showDeleteConfirmation = true
+                                } else if (downloadProgress == null) {
+                                    viewModel.downloadTalk(talk) 
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            enabled = downloadProgress == null,
+                            colors = if (isDownloaded) {
+                                ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.error
+                                )
+                            } else {
+                                ButtonDefaults.outlinedButtonColors()
+                            }
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                when {
+                                    downloadProgress != null -> {
+                                        // Show progress bar during download
+                                        LinearProgressIndicator(
+                                            progress = { downloadProgress ?: 0f },
+                                            modifier = Modifier
+                                                .width(24.dp)
+                                                .height(2.dp)
+                                        )
+                                        Text(
+                                            "Downloading ${(downloadProgress?.times(100))?.toInt()}%",
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                    isDownloaded -> {
+                                        // Show remove icon when downloaded
+                                        Icon(
+                                            Icons.Default.Delete,
+                                            "Remove Download",
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text("Remove")
+                                    }
+                                    else -> {
+                                        // Regular download button
+                                        Icon(
+                                            Icons.Default.Download,
+                                            "Download",
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text("Download")
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Favorite button
+                        OutlinedButton(
+                            onClick = { viewModel.toggleFavorite(talk) },
+                            modifier = Modifier.weight(1f),
+                            colors = if (talk.isFavorite) {
+                                ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.primary
+                                )
+                            } else {
+                                ButtonDefaults.outlinedButtonColors()
+                            }
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    if (talk.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                    if (talk.isFavorite) "Remove from Favorites" else "Add to Favorites",
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(if (talk.isFavorite) "Favorited" else "Favorite")
+                            }
+                        }
+                    }
                 }
-
-                // Divider between tracks and actions
-                androidx.compose.material3.HorizontalDivider(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp),
+            }
+            
+            // Player controls fixed at the bottom
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+            ) {
+                // Divider above controls
+                HorizontalDivider(
+                    modifier = Modifier.fillMaxWidth(),
                     thickness = 1.dp,
                     color = MaterialTheme.colorScheme.surfaceVariant
                 )
                 
-                // Download/Favorite Row
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // Download button
-                    OutlinedButton(
-                        onClick = { 
-                            if (isDownloaded) {
-                                // Show confirmation dialog if already downloaded
-                                showDeleteConfirmation = true
-                            } else if (downloadProgress == null) {
-                                // Start download if not already in progress
-                                viewModel.downloadTalk(talk) 
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                        // Always enable the button, even when downloaded (for removal)
-                        enabled = downloadProgress == null,
-                        colors = if (isDownloaded) {
-                            // Use error color for the "Remove" button
-                            ButtonDefaults.outlinedButtonColors(
-                                contentColor = MaterialTheme.colorScheme.error
-                            )
-                        } else {
-                            ButtonDefaults.outlinedButtonColors()
-                        }
-                    ) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            when {
-                                downloadProgress != null -> {
-                                    // Show progress bar during download
-                                    LinearProgressIndicator(
-                                        progress = { downloadProgress ?: 0f },
-                                        modifier = Modifier
-                                            .width(24.dp)
-                                            .height(2.dp)
-                                    )
-                                    Text(
-                                        "Downloading ${(downloadProgress?.times(100))?.toInt()}%",
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                }
-                                isDownloaded -> {
-                                    // Show remove icon when downloaded
-                                    Icon(
-                                        Icons.Default.Delete,
-                                        "Remove Download",
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Text("Remove")
-                                }
-                                else -> {
-                                    // Regular download button
-                                    Icon(
-                                        Icons.Default.Download,
-                                        "Download",
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Text("Download")
-                                }
-                            }
-                        }
-                    }
-
-                    // Favorite button
-                    OutlinedButton(
-                        onClick = { viewModel.toggleFavorite(talk) },
-                        modifier = Modifier.weight(1f),
-                        colors = if (talk.isFavorite) {
-                            ButtonDefaults.outlinedButtonColors(
-                                contentColor = MaterialTheme.colorScheme.primary
-                            )
-                        } else {
-                            ButtonDefaults.outlinedButtonColors()
-                        }
-                    ) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                if (talk.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                if (talk.isFavorite) "Remove from Favorites" else "Add to Favorites",
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(if (talk.isFavorite) "Favorited" else "Favorite")
-                        }
-                    }
-                }
-                
-                // Push playback controls to bottom with spacer
-                Spacer(modifier = Modifier.weight(1f))
-                
-                // Playback Controls at bottom
+                // Playback Controls
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -300,7 +302,6 @@ fun TalkDetailScreen(
                         Icon(Icons.Default.SkipNext, "Next Track")
                     }
                 }
-
             }
         }
     }
