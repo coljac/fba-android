@@ -161,11 +161,28 @@ fun TalkDetailScreen(
                             
                             Spacer(modifier = Modifier.height(4.dp))
                         }
+
+                        // Add a clear separator after the tracks
+                        Spacer(modifier = Modifier.height(16.dp))
+                        HorizontalDivider(
+                            modifier = Modifier.fillMaxWidth(),
+                            thickness = 1.dp,
+                            color = MaterialTheme.colorScheme.surfaceVariant
+                        )
                     }
                     
-                    // Download/Favorite buttons
+                    // Ensure buttons are visible with more obvious spacing
                     Spacer(modifier = Modifier.height(16.dp))
+
+                    // Download/Favorite buttons section header
+                    Text(
+                        text = "Options",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
                     
+                    // Download/Favorite buttons
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
