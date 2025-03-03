@@ -59,6 +59,7 @@ fun AppNavigation(
     
     val bottomNavItems = listOf(
         BottomNavItem(Screen.Home, Icons.Default.Home, "Home"),
+        BottomNavItem(Screen.Search, Icons.Default.Search, "Search"),
         BottomNavItem(Screen.Favorites, Icons.Default.Favorite, "Favorites"),
         BottomNavItem(Screen.Downloads, Icons.Default.Download, "Downloads")
     )
@@ -66,79 +67,84 @@ fun AppNavigation(
     val showBottomNav = !currentRoute.isNullOrEmpty() && 
                       !currentRoute.startsWith("talk/") && 
                       (currentRoute == Screen.Home.route || 
+                       currentRoute == Screen.Search.route ||
                        currentRoute == Screen.Favorites.route || 
                        currentRoute == Screen.Downloads.route)
     
-    Box(
+    Scaffold(
         modifier = Modifier
             .fillMaxSize()
             .padding(bottom = navigationBarPadding.calculateBottomPadding())
     ) {
-        Column(
+        Box(
             modifier = Modifier.fillMaxSize()
         ) {
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
+            Column(
+                modifier = Modifier.fillMaxSize()
             ) {
-                NavHost(
-                    navController = navController,
-                    startDestination = Screen.Home.route,
-                    modifier = Modifier.padding(bottom = if (showBottomNav) 128.dp else 64.dp)
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
                 ) {
-                    composable(Screen.Home.route) {
-                        HomeScreen(
-                            viewModel = viewModel,
-                            onNavigateToSearch = { navController.navigate(Screen.Search.route) },
-                            onNavigateToFavorites = { navController.navigate(Screen.Favorites.route) },
-                            onTalkSelected = { talk ->
-                                navController.navigate(Screen.TalkDetail.createRoute(talk.id))
-                            }
-                        )
-                    }
-                    
-                    composable(Screen.Search.route) {
-                        SearchScreen(
-                            viewModel = viewModel,
-                            onTalkSelected = { talk ->
-                                navController.navigate(Screen.TalkDetail.createRoute(talk.id))
-                            }
-                        )
-                    }
-                    
-                    composable(Screen.Favorites.route) {
-                        FavoritesScreen(
-                            viewModel = viewModel,
-                            onNavigateUp = { navController.navigate(Screen.Home.route) },
-                            onTalkSelected = { talk ->
-                                navController.navigate(Screen.TalkDetail.createRoute(talk.id))
-                            }
-                        )
-                    }
-                    
-                    composable(Screen.Downloads.route) {
-                        DownloadedScreen(
-                            viewModel = viewModel,
-                            onTalkSelected = { talk ->
-                                navController.navigate(Screen.TalkDetail.createRoute(talk.id))
-                            }
-                        )
-                    }
-                    
-                    composable(
-                        route = Screen.TalkDetail.route,
-                        arguments = listOf(
-                            navArgument("talkId") { type = NavType.StringType }
-                        )
-                    ) { backStackEntry ->
-                        val talkId = backStackEntry.arguments?.getString("talkId")
-                            ?: return@composable
-                        TalkDetailScreen(
-                            viewModel = viewModel,
-                            talkId = talkId,
-                            onNavigateUp = { navController.navigateUp() }
-                        )
+                    NavHost(
+                        navController = navController,
+                        startDestination = Screen.Home.route,
+                        modifier = Modifier.padding(bottom = if (showBottomNav) 128.dp else 64.dp)
+                    ) {
+                        composable(Screen.Home.route) {
+                            HomeScreen(
+                                viewModel = viewModel,
+                                onNavigateToSearch = { navController.navigate(Screen.Search.route) },
+                                onNavigateToFavorites = { navController.navigate(Screen.Favorites.route) },
+                                onTalkSelected = { talk ->
+                                    navController.navigate(Screen.TalkDetail.createRoute(talk.id))
+                                }
+                            )
+                        }
+                        
+                        composable(Screen.Search.route) {
+                            SearchScreen(
+                                viewModel = viewModel,
+                                onTalkSelected = { talk ->
+                                    navController.navigate(Screen.TalkDetail.createRoute(talk.id))
+                                }
+                            )
+                        }
+                        
+                        composable(Screen.Favorites.route) {
+                            FavoritesScreen(
+                                viewModel = viewModel,
+                                onNavigateUp = { navController.navigate(Screen.Home.route) },
+                                onTalkSelected = { talk ->
+                                    navController.navigate(Screen.TalkDetail.createRoute(talk.id))
+                                }
+                            )
+                        }
+                        
+                        composable(Screen.Downloads.route) {
+                            DownloadedScreen(
+                                viewModel = viewModel,
+                                onTalkSelected = { talk ->
+                                    navController.navigate(Screen.TalkDetail.createRoute(talk.id))
+                                }
+                            )
+                        }
+                        
+                        composable(
+                            route = Screen.TalkDetail.route,
+                            arguments = listOf(
+                                navArgument("talkId") { type = NavType.StringType }
+                            )
+                        ) { backStackEntry ->
+                            val talkId = backStackEntry.arguments?.getString("talkId")
+                                ?: return@composable
+                            TalkDetailScreen(
+                                viewModel = viewModel,
+                                talkId = talkId,
+                                onNavigateUp = { navController.navigateUp() }
+                            )
+                        }
                     }
                 }
                 
@@ -148,16 +154,13 @@ fun AppNavigation(
                         navController.navigate(Screen.TalkDetail.createRoute(talk.id))
                     },
                     modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = if (showBottomNav) 64.dp else 0.dp),
+                        .fillMaxWidth()
+                        .padding(bottom = if (showBottomNav) 80.dp else 0.dp),
                     currentScreen = if (currentRoute?.startsWith("talk/") == true) "TalkDetail" else ""
                 )
                 
                 if (showBottomNav) {
-                    NavigationBar(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                    ) {
+                    NavigationBar {
                         bottomNavItems.forEach { item ->
                             NavigationBarItem(
                                 icon = { Icon(item.icon, contentDescription = item.label) },
