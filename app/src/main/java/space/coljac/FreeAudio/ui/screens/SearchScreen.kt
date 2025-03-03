@@ -52,6 +52,28 @@ fun SearchScreen(
                 is SearchState.Success -> {
                     val results = (searchState as SearchState.Success).response
                     LazyColumn {
+                        item {
+                            if (viewModel.isUpdatingSearchResults.collectAsState().value) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier
+                                            .size(16.dp)
+                                            .padding(end = 8.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                    Text(
+                                        text = "Updating track information...",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                            }
+                        }
+                        
                         items(
                             items = results.results,
                             key = { "${it.id}_search" }

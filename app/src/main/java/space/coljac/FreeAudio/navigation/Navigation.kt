@@ -74,91 +74,19 @@ fun AppNavigation(
     Scaffold(
         modifier = Modifier
             .fillMaxSize()
-            .padding(bottom = navigationBarPadding.calculateBottomPadding())
-    ) {
-        Box(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            Column(
-                modifier = Modifier.fillMaxSize()
-            ) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                ) {
-                    NavHost(
-                        navController = navController,
-                        startDestination = Screen.Home.route,
-                        modifier = Modifier.padding(bottom = if (showBottomNav) 128.dp else 64.dp)
-                    ) {
-                        composable(Screen.Home.route) {
-                            HomeScreen(
-                                viewModel = viewModel,
-                                onNavigateToSearch = { navController.navigate(Screen.Search.route) },
-                                onNavigateToFavorites = { navController.navigate(Screen.Favorites.route) },
-                                onTalkSelected = { talk ->
-                                    navController.navigate(Screen.TalkDetail.createRoute(talk.id))
-                                }
-                            )
-                        }
-                        
-                        composable(Screen.Search.route) {
-                            SearchScreen(
-                                viewModel = viewModel,
-                                onTalkSelected = { talk ->
-                                    navController.navigate(Screen.TalkDetail.createRoute(talk.id))
-                                }
-                            )
-                        }
-                        
-                        composable(Screen.Favorites.route) {
-                            FavoritesScreen(
-                                viewModel = viewModel,
-                                onNavigateUp = { navController.navigate(Screen.Home.route) },
-                                onTalkSelected = { talk ->
-                                    navController.navigate(Screen.TalkDetail.createRoute(talk.id))
-                                }
-                            )
-                        }
-                        
-                        composable(Screen.Downloads.route) {
-                            DownloadedScreen(
-                                viewModel = viewModel,
-                                onTalkSelected = { talk ->
-                                    navController.navigate(Screen.TalkDetail.createRoute(talk.id))
-                                }
-                            )
-                        }
-                        
-                        composable(
-                            route = Screen.TalkDetail.route,
-                            arguments = listOf(
-                                navArgument("talkId") { type = NavType.StringType }
-                            )
-                        ) { backStackEntry ->
-                            val talkId = backStackEntry.arguments?.getString("talkId")
-                                ?: return@composable
-                            TalkDetailScreen(
-                                viewModel = viewModel,
-                                talkId = talkId,
-                                onNavigateUp = { navController.navigateUp() }
-                            )
-                        }
-                    }
-                }
-                
+            .padding(bottom = navigationBarPadding.calculateBottomPadding()),
+        bottomBar = {
+            Column {
+                // Put player bar directly above the navigation bar
                 BottomPlayerBar(
                     viewModel = viewModel,
                     onTalkClick = { talk ->
                         navController.navigate(Screen.TalkDetail.createRoute(talk.id))
                     },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = if (showBottomNav) 80.dp else 0.dp),
                     currentScreen = if (currentRoute?.startsWith("talk/") == true) "TalkDetail" else ""
                 )
                 
+                // Show bottom navigation bar for main screens
                 if (showBottomNav) {
                     NavigationBar {
                         bottomNavItems.forEach { item ->
@@ -178,6 +106,67 @@ fun AppNavigation(
                         }
                     }
                 }
+            }
+        }
+    ) { padding ->
+        // Main content area
+        NavHost(
+            navController = navController,
+            startDestination = Screen.Home.route,
+            modifier = Modifier.padding(padding)
+        ) {
+            composable(Screen.Home.route) {
+                HomeScreen(
+                    viewModel = viewModel,
+                    onNavigateToSearch = { navController.navigate(Screen.Search.route) },
+                    onNavigateToFavorites = { navController.navigate(Screen.Favorites.route) },
+                    onTalkSelected = { talk ->
+                        navController.navigate(Screen.TalkDetail.createRoute(talk.id))
+                    }
+                )
+            }
+            
+            composable(Screen.Search.route) {
+                SearchScreen(
+                    viewModel = viewModel,
+                    onTalkSelected = { talk ->
+                        navController.navigate(Screen.TalkDetail.createRoute(talk.id))
+                    }
+                )
+            }
+            
+            composable(Screen.Favorites.route) {
+                FavoritesScreen(
+                    viewModel = viewModel,
+                    onNavigateUp = { navController.navigate(Screen.Home.route) },
+                    onTalkSelected = { talk ->
+                        navController.navigate(Screen.TalkDetail.createRoute(talk.id))
+                    }
+                )
+            }
+            
+            composable(Screen.Downloads.route) {
+                DownloadedScreen(
+                    viewModel = viewModel,
+                    onTalkSelected = { talk ->
+                        navController.navigate(Screen.TalkDetail.createRoute(talk.id))
+                    }
+                )
+            }
+            
+            composable(
+                route = Screen.TalkDetail.route,
+                arguments = listOf(
+                    navArgument("talkId") { type = NavType.StringType }
+                )
+            ) { backStackEntry ->
+                val talkId = backStackEntry.arguments?.getString("talkId")
+                    ?: return@composable
+                TalkDetailScreen(
+                    viewModel = viewModel,
+                    talkId = talkId,
+                    onNavigateUp = { navController.navigateUp() }
+                )
             }
         }
     }

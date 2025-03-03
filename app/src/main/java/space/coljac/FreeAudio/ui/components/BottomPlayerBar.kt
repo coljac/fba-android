@@ -30,7 +30,7 @@ fun BottomPlayerBar(
 
     currentTalk?.let { talk ->
         Surface(
-            modifier = modifier,
+            modifier = modifier.fillMaxWidth(),
             tonalElevation = 8.dp
         ) {
             Row(

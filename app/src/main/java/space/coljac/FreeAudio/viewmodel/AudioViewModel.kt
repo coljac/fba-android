@@ -30,6 +30,9 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     private val _searchState = MutableStateFlow<SearchState>(SearchState.Empty)
     val searchState: StateFlow<SearchState> = _searchState
     
+    private val _isUpdatingSearchResults = MutableStateFlow(false)
+    val isUpdatingSearchResults: StateFlow<Boolean> = _isUpdatingSearchResults
+    
     private var player: ExoPlayer? = null
     
     private val _currentTalk = MutableStateFlow<Talk?>(null)
@@ -77,12 +80,42 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 Log.d(TAG, "Searching for: $query")
                 _searchState.value = SearchState.Loading
-                val results = fbaService.search(query)
-                Log.d(TAG, "Got ${results.total} results")
-                _searchState.value = SearchState.Success(results)
+                val searchResults = fbaService.search(query)
+                Log.d(TAG, "Got ${searchResults.total} results")
+                
+                // First display the initial results
+                _searchState.value = SearchState.Success(searchResults)
+                
+                // Then update track information in the background
+                _isUpdatingSearchResults.value = true
+                
+                try {
+                    // Get accurate track counts and durations from talk details
+                    val updatedResults = searchResults.results.map { talk ->
+                        try {
+                            // Try to get detailed information for each talk
+                            val detailedTalk = repository.getTalkById(talk.id)
+                            if (detailedTalk != null && detailedTalk.tracks.isNotEmpty()) {
+                                Log.d(TAG, "Updated track count for ${talk.id}: was ${talk.tracks.size}, now ${detailedTalk.tracks.size}")
+                                detailedTalk
+                            } else {
+                                talk
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to get detailed info for talk ${talk.id}", e)
+                            talk
+                        }
+                    }
+                    
+                    val updatedResponse = SearchResponse(searchResults.total, updatedResults)
+                    _searchState.value = SearchState.Success(updatedResponse)
+                } finally {
+                    _isUpdatingSearchResults.value = false
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Search error", e)
                 _searchState.value = SearchState.Error(e.message ?: "Unknown error")
+                _isUpdatingSearchResults.value = false
             }
         }
     }
