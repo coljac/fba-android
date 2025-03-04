@@ -1,4 +1,4 @@
-package space.coljac.FreeAudio.ui.theme
+package com.freebuddhistaudio.FreeBuddhistAudio.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

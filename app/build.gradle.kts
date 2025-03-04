@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "space.coljac.FreeAudio"
+    namespace = "com.freebuddhistaudio.FreeBuddhistAudio"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "space.coljac.FreeAudio"
+        applicationId = "com.freebuddhistaudio.FreeBuddhistAudio"
         minSdk = 29
         targetSdk = 35
         versionCode = 1

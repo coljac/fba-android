@@ -1,4 +1,4 @@
-package space.coljac.FreeAudio.ui.components
+package com.freebuddhistaudio.FreeBuddhistAudio.ui.components
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -10,8 +10,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import space.coljac.FreeAudio.data.Talk
-import space.coljac.FreeAudio.viewmodel.AudioViewModel
+import com.freebuddhistaudio.FreeBuddhistAudio.data.Talk
+import com.freebuddhistaudio.FreeBuddhistAudio.viewmodel.AudioViewModel
 
 @Composable
 fun BottomPlayerBar(

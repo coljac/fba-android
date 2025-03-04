@@ -1,4 +1,4 @@
-package space.coljac.FreeAudio.ui.screens
+package com.freebuddhistaudio.FreeBuddhistAudio.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -17,9 +17,9 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.rememberCoroutineScope
-import space.coljac.FreeAudio.data.Talk
-import space.coljac.FreeAudio.ui.components.TalkItem
-import space.coljac.FreeAudio.viewmodel.AudioViewModel
+import com.freebuddhistaudio.FreeBuddhistAudio.data.Talk
+import com.freebuddhistaudio.FreeBuddhistAudio.ui.components.TalkItem
+import com.freebuddhistaudio.FreeBuddhistAudio.viewmodel.AudioViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

@@ -1,4 +1,4 @@
-package space.coljac.FreeAudio.network
+package com.freebuddhistaudio.FreeBuddhistAudio.network
 // Issues: look to mp3 file; fetch list of tracks another way
 // https://www.freebuddhistaudio.com/audio/details?num=OM780
 import android.text.Html
@@ -8,9 +8,9 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import space.coljac.FreeAudio.data.SearchResponse
-import space.coljac.FreeAudio.data.Talk
-import space.coljac.FreeAudio.data.Track
+import com.freebuddhistaudio.FreeBuddhistAudio.data.SearchResponse
+import com.freebuddhistaudio.FreeBuddhistAudio.data.Talk
+import com.freebuddhistaudio.FreeBuddhistAudio.data.Track
 import java.net.URL
 import java.net.URLEncoder
 

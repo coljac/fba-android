@@ -1,4 +1,4 @@
-package space.coljac.FreeAudio.ui.screens
+package com.freebuddhistaudio.FreeBuddhistAudio.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -27,9 +27,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import space.coljac.FreeAudio.viewmodel.AudioViewModel
-import space.coljac.FreeAudio.data.Talk
-import space.coljac.FreeAudio.data.Track
+import com.freebuddhistaudio.FreeBuddhistAudio.viewmodel.AudioViewModel
+import com.freebuddhistaudio.FreeBuddhistAudio.data.Talk
+import com.freebuddhistaudio.FreeBuddhistAudio.data.Track
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

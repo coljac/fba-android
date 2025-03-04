@@ -1,4 +1,4 @@
-package space.coljac.FreeAudio.ui.theme
+package com.freebuddhistaudio.FreeBuddhistAudio.ui.theme
 
 import android.app.Activity
 import android.os.Build

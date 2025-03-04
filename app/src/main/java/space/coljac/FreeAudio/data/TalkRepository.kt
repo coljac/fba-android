@@ -1,4 +1,4 @@
-package space.coljac.FreeAudio.data
+package com.freebuddhistaudio.FreeBuddhistAudio.data
 
 import android.content.Context
 import android.util.Log
@@ -20,7 +20,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.zip.ZipInputStream
 import com.google.gson.Gson
-import space.coljac.FreeAudio.network.FBAService
+import com.freebuddhistaudio.FreeBuddhistAudio.network.FBAService
 
 private const val TAG = "TalkRepository"
 

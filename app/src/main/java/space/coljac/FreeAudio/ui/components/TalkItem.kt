@@ -1,4 +1,4 @@
-package space.coljac.FreeAudio.ui.components
+package com.freebuddhistaudio.FreeBuddhistAudio.ui.components
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -12,7 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import space.coljac.FreeAudio.data.Talk
+import com.freebuddhistaudio.FreeBuddhistAudio.data.Talk
 
 @Composable
 fun TalkItem(

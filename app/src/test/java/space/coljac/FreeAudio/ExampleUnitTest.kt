@@ -1,4 +1,4 @@
-package space.coljac.FreeAudio
+package com.freebuddhistaudio.FreeBuddhistAudio
 
 import org.junit.Test
 

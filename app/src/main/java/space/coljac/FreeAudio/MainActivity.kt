@@ -1,4 +1,4 @@
-package space.coljac.FreeAudio
+package com.freebuddhistaudio.FreeBuddhistAudio
 
 import android.content.BroadcastReceiver
 import android.content.ComponentName
@@ -14,7 +14,7 @@ import com.google.gson.Gson
 import com.google.gson.JsonObject
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
-import space.coljac.FreeAudio.data.Track
+import com.freebuddhistaudio.FreeBuddhistAudio.data.Track
 import java.net.URL
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -34,13 +34,13 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
-import space.coljac.FreeAudio.playback.AudioService
-import space.coljac.FreeAudio.ui.components.SearchBar
-import space.coljac.FreeAudio.ui.components.TalkItem
-import space.coljac.FreeAudio.ui.theme.FreeAudioTheme
-import space.coljac.FreeAudio.viewmodel.AudioViewModel
-import space.coljac.FreeAudio.data.SearchState
-import space.coljac.FreeAudio.navigation.AppNavigation
+import com.freebuddhistaudio.FreeBuddhistAudio.playback.AudioService
+import com.freebuddhistaudio.FreeBuddhistAudio.ui.components.SearchBar
+import com.freebuddhistaudio.FreeBuddhistAudio.ui.components.TalkItem
+import com.freebuddhistaudio.FreeBuddhistAudio.ui.theme.FreeAudioTheme
+import com.freebuddhistaudio.FreeBuddhistAudio.viewmodel.AudioViewModel
+import com.freebuddhistaudio.FreeBuddhistAudio.data.SearchState
+import com.freebuddhistaudio.FreeBuddhistAudio.navigation.AppNavigation
 
 private const val TAG = "MainActivity"
 

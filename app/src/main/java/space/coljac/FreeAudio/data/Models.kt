@@ -1,4 +1,4 @@
-package space.coljac.FreeAudio.data
+package com.freebuddhistaudio.FreeBuddhistAudio.data
 
 data class Talk(
     val id: String,

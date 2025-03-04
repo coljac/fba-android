@@ -1,4 +1,4 @@
-package space.coljac.FreeAudio.viewmodel
+package com.freebuddhistaudio.FreeBuddhistAudio.viewmodel
 
 import android.app.Application
 import android.content.Intent
@@ -13,12 +13,12 @@ import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import space.coljac.FreeAudio.data.SearchResponse
-import space.coljac.FreeAudio.data.SearchState
-import space.coljac.FreeAudio.data.Talk
-import space.coljac.FreeAudio.data.Track
-import space.coljac.FreeAudio.network.FBAService
-import space.coljac.FreeAudio.data.TalkRepository
+import com.freebuddhistaudio.FreeBuddhistAudio.data.SearchResponse
+import com.freebuddhistaudio.FreeBuddhistAudio.data.SearchState
+import com.freebuddhistaudio.FreeBuddhistAudio.data.Talk
+import com.freebuddhistaudio.FreeBuddhistAudio.data.Track
+import com.freebuddhistaudio.FreeBuddhistAudio.network.FBAService
+import com.freebuddhistaudio.FreeBuddhistAudio.data.TalkRepository
 import java.io.File
 import android.net.Uri
 
@@ -195,7 +195,7 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     
     private fun startAudioService() {
         val context = getApplication<Application>().applicationContext
-        val intent = Intent(context, Class.forName("space.coljac.FreeAudio.playback.AudioService"))
+        val intent = Intent(context, Class.forName("com.freebuddhistaudio.FreeBuddhistAudio.playback.AudioService"))
         context.startService(intent)
     }
     
@@ -212,7 +212,7 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
             startAudioService()
             
             val context = getApplication<Application>().applicationContext
-            val intent = Intent(context, Class.forName("space.coljac.FreeAudio.playback.AudioService"))
+            val intent = Intent(context, Class.forName("com.freebuddhistaudio.FreeBuddhistAudio.playback.AudioService"))
             
             if (it.isPlaying) {
                 // Send pause command to the service
@@ -251,7 +251,7 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
                     
                     // Send play command to service
                     val context = getApplication<Application>().applicationContext
-                    val intent = Intent(context, Class.forName("space.coljac.FreeAudio.playback.AudioService"))
+                    val intent = Intent(context, Class.forName("com.freebuddhistaudio.FreeBuddhistAudio.playback.AudioService"))
                     intent.action = "ACTION_PLAY"
                     context.startService(intent)
                     
@@ -271,7 +271,7 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         
         // Send command to service
         val context = getApplication<Application>().applicationContext
-        val intent = Intent(context, Class.forName("space.coljac.FreeAudio.playback.AudioService"))
+        val intent = Intent(context, Class.forName("com.freebuddhistaudio.FreeBuddhistAudio.playback.AudioService"))
         intent.action = "ACTION_SKIP_FORWARD"
         context.startService(intent)
         
@@ -288,7 +288,7 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         
         // Send command to service
         val context = getApplication<Application>().applicationContext
-        val intent = Intent(context, Class.forName("space.coljac.FreeAudio.playback.AudioService"))
+        val intent = Intent(context, Class.forName("com.freebuddhistaudio.FreeBuddhistAudio.playback.AudioService"))
         intent.action = "ACTION_SKIP_BACKWARD"
         context.startService(intent)
         
@@ -305,7 +305,7 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         
         // Send command to service
         val context = getApplication<Application>().applicationContext
-        val intent = Intent(context, Class.forName("space.coljac.FreeAudio.playback.AudioService"))
+        val intent = Intent(context, Class.forName("com.freebuddhistaudio.FreeBuddhistAudio.playback.AudioService"))
         intent.action = "ACTION_NEXT"
         context.startService(intent)
         
@@ -319,7 +319,7 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         
         // Send command to service
         val context = getApplication<Application>().applicationContext
-        val intent = Intent(context, Class.forName("space.coljac.FreeAudio.playback.AudioService"))
+        val intent = Intent(context, Class.forName("com.freebuddhistaudio.FreeBuddhistAudio.playback.AudioService"))
         intent.action = "ACTION_PREVIOUS"
         context.startService(intent)
         
@@ -498,7 +498,7 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         // Stop the media service when the ViewModel is cleared
         try {
             val context = getApplication<Application>().applicationContext
-            val intent = Intent(context, Class.forName("space.coljac.FreeAudio.playback.AudioService"))
+            val intent = Intent(context, Class.forName("com.freebuddhistaudio.FreeBuddhistAudio.playback.AudioService"))
             context.stopService(intent)
         } catch (e: Exception) {
             Log.e(TAG, "Error stopping service", e)

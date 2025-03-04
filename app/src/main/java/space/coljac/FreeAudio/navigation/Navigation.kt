@@ -1,4 +1,4 @@
-package space.coljac.FreeAudio.navigation
+package com.freebuddhistaudio.FreeBuddhistAudio.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -10,12 +10,12 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navArgument
-import space.coljac.FreeAudio.ui.screens.FavoritesScreen
-import space.coljac.FreeAudio.ui.screens.SearchScreen
-import space.coljac.FreeAudio.ui.screens.TalkDetailScreen
-import space.coljac.FreeAudio.ui.screens.DownloadedScreen
-import space.coljac.FreeAudio.viewmodel.AudioViewModel
-import space.coljac.FreeAudio.ui.screens.HomeScreen
+import com.freebuddhistaudio.FreeBuddhistAudio.ui.screens.FavoritesScreen
+import com.freebuddhistaudio.FreeBuddhistAudio.ui.screens.SearchScreen
+import com.freebuddhistaudio.FreeBuddhistAudio.ui.screens.TalkDetailScreen
+import com.freebuddhistaudio.FreeBuddhistAudio.ui.screens.DownloadedScreen
+import com.freebuddhistaudio.FreeBuddhistAudio.viewmodel.AudioViewModel
+import com.freebuddhistaudio.FreeBuddhistAudio.ui.screens.HomeScreen
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
@@ -27,7 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
-import space.coljac.FreeAudio.ui.components.BottomPlayerBar
+import com.freebuddhistaudio.FreeBuddhistAudio.ui.components.BottomPlayerBar
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding

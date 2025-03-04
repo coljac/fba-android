@@ -1,4 +1,4 @@
-package space.coljac.FreeAudio.playback
+package com.freebuddhistaudio.FreeBuddhistAudio.playback
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -35,8 +35,8 @@ import androidx.media3.session.MediaSessionService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import space.coljac.FreeAudio.MainActivity
-import space.coljac.FreeAudio.R
+import com.freebuddhistaudio.FreeBuddhistAudio.MainActivity
+import com.freebuddhistaudio.FreeBuddhistAudio.R
 
 private const val NOTIFICATION_ID = 123
 private const val CHANNEL_ID = "FreeAudio_playback_channel"
