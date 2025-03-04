@@ -9,13 +9,18 @@ import android.content.ComponentName
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.support.v4.media.MediaBrowserCompat
+import android.support.v4.media.MediaDescriptionCompat
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Log
+import androidx.media.MediaBrowserServiceCompat
 import androidx.core.app.NotificationCompat
 import androidx.media.app.NotificationCompat.MediaStyle
 import androidx.media.session.MediaButtonReceiver
@@ -38,12 +43,22 @@ private const val CHANNEL_ID = "FreeAudio_playback_channel"
 private const val TAG = "AudioService"
 
 @UnstableApi
-class AudioService : MediaSessionService() {
+class AudioService : MediaBrowserServiceCompat() {
     private var mediaSession: MediaSession? = null
     private var mediaSessionCompat: MediaSessionCompat? = null  // For compatibility
     private lateinit var player: ExoPlayer
     private lateinit var notificationManager: NotificationManager
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    
+    // Root ID for Android Auto media browser
+    private val AUTO_ROOT_ID = "root_for_auto"
+    private val MEDIA_ROOT_ID = "media_root_id"
+    private val BROWSABLE_ROOT = "/__BROWSABLE_ROOT__"
+    private val EMPTY_ROOT = "/__EMPTY_ROOT__"
+    private val RECENT_ROOT = "/Recent"
+    private val ALL_TALKS_ROOT = "/AllTalks"
+    private val FAVORITES_ROOT = "/Favorites"
+    private val DOWNLOADS_ROOT = "/Downloads"
 
     override fun onCreate() {
         super.onCreate()
@@ -380,24 +395,48 @@ class AudioService : MediaSessionService() {
         val currentItem = player.currentMediaItem ?: return
         val mediaMetadata = currentItem.mediaMetadata
         
-        // Create MediaMetadataCompat
+        // Enhanced metadata for Android Auto
         val metadataBuilder = MediaMetadataCompat.Builder()
             .putString(MediaMetadataCompat.METADATA_KEY_TITLE, mediaMetadata.title?.toString() ?: "Unknown Title")
             .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, mediaMetadata.artist?.toString() ?: "Unknown Artist")
-            .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, mediaMetadata.albumTitle?.toString() ?: "Unknown Album")
+            .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, mediaMetadata.albumTitle?.toString() ?: "Free Buddhist Audio")
+            .putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ARTIST, "Free Buddhist Audio")
+            .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, mediaMetadata.title?.toString() ?: "Unknown Title")
+            .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, mediaMetadata.artist?.toString() ?: "Unknown Artist")
+            .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_DESCRIPTION, mediaMetadata.description?.toString() ?: "Buddhist Talk")
             .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, player.duration)
+            .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, currentItem.mediaId)
+            .putLong(MediaMetadataCompat.METADATA_KEY_TRACK_NUMBER, (player.currentMediaItemIndex + 1).toLong())
+            .putLong(MediaMetadataCompat.METADATA_KEY_NUM_TRACKS, player.mediaItemCount.toLong())
         
         // Try to load artwork
         try {
             val artworkUri = mediaMetadata.artworkUri
             if (artworkUri != null) {
+                // For Android Auto, it's important to have album art
                 val bitmap = BitmapFactory.decodeResource(resources, R.drawable.ic_notification)
                 if (bitmap != null) {
                     metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bitmap)
+                    metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, bitmap)
+                    metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, artworkUri.toString())
+                    metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON_URI, artworkUri.toString())
+                }
+            } else {
+                // Always provide a default artwork for Auto display
+                val bitmap = BitmapFactory.decodeResource(resources, R.drawable.ic_notification)
+                if (bitmap != null) {
+                    metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bitmap)
+                    metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, bitmap)
                 }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load artwork", e)
+            // Always provide a default artwork for Auto display
+            val bitmap = BitmapFactory.decodeResource(resources, R.drawable.ic_notification)
+            if (bitmap != null) {
+                metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bitmap)
+                metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, bitmap)
+            }
         }
         
         // Set metadata
@@ -546,7 +585,8 @@ class AudioService : MediaSessionService() {
         super.onTaskRemoved(rootIntent)
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
+    // For Media3 compatibility
+    fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d(TAG, "onStartCommand: intent=${intent?.action}")
@@ -653,5 +693,126 @@ class AudioService : MediaSessionService() {
         fun onSeekBackward() {
             player.seekBack()
         }
+    }
+    
+    /**
+     * MediaBrowserServiceCompat implementation for Android Auto
+     */
+    // Implementation of MediaBrowserServiceCompat methods for Android Auto
+override fun onGetRoot(clientPackageName: String, clientUid: Int, rootHints: Bundle?): BrowserRoot? {
+    // Check if this is a connection from Android Auto
+    val isAutomotive = rootHints?.getBoolean(BrowserRoot.EXTRA_RECENT) ?: false ||
+                       rootHints?.getBoolean(BrowserRoot.EXTRA_OFFLINE) ?: false ||
+                       rootHints?.getBoolean(BrowserRoot.EXTRA_SUGGESTED) ?: false
+    
+    Log.d(TAG, "onGetRoot: clientPackage=$clientPackageName, clientUid=$clientUid, isAutomotive=$isAutomotive")
+    
+    return if (isAutomotive || isCarPackage(clientPackageName)) {
+        // Return a browsable root for Android Auto
+        BrowserRoot(AUTO_ROOT_ID, null)
+    } else {
+        // For regular app connections
+        BrowserRoot(MEDIA_ROOT_ID, null)
+    }
+}
+override fun onLoadChildren(parentId: String, result: Result<List<MediaBrowserCompat.MediaItem>>) {
+    Log.d(TAG, "onLoadChildren: parentId=$parentId")
+    
+    // Detach result to send it later when data is available
+    result.detach()
+    
+    when (parentId) {
+        // Root level for Auto - provide main categories
+        AUTO_ROOT_ID -> {
+            val items = listOf(
+                createBrowsableMediaItem(RECENT_ROOT, "Recent Talks", null),
+                createBrowsableMediaItem(ALL_TALKS_ROOT, "All Talks", null),
+                createBrowsableMediaItem(FAVORITES_ROOT, "Favorites", null),
+                createBrowsableMediaItem(DOWNLOADS_ROOT, "Downloaded Talks", null)
+            )
+            result.sendResult(items)
+        }
+        
+        MEDIA_ROOT_ID -> {
+            // For regular app browsing
+            val items = listOf(
+                createBrowsableMediaItem(ALL_TALKS_ROOT, "All Talks", null)
+            )
+            result.sendResult(items)
+        }
+        
+        // Implement other category browsing based on parentId
+        RECENT_ROOT -> {
+            // TODO: Load recent talks
+            result.sendResult(emptyList())
+        }
+        
+        ALL_TALKS_ROOT -> {
+            // TODO: Load all talks
+            result.sendResult(emptyList())
+        }
+        
+        FAVORITES_ROOT -> {
+            // TODO: Load favorites
+            result.sendResult(emptyList())
+        }
+        
+        DOWNLOADS_ROOT -> {
+            // TODO: Load downloads
+            result.sendResult(emptyList())
+        }
+        
+        else -> {
+            // Unknown parentId
+            result.sendResult(emptyList())
+        }
+    }
+}
+
+override fun onSearch(query: String, extras: Bundle?, result: Result<List<MediaBrowserCompat.MediaItem>>) {
+    Log.d(TAG, "onSearch: query=$query")
+    
+    // Detach result to send it later when search results are available
+    result.detach()
+    
+    // TODO: Implement search
+    result.sendResult(emptyList())
+}
+    private fun createBrowsableMediaItem(id: String, title: String, iconUri: Uri?): MediaBrowserCompat.MediaItem {
+        val description = MediaDescriptionCompat.Builder()
+            .setMediaId(id)
+            .setTitle(title)
+            .setIconUri(iconUri)
+            .build()
+        
+        return MediaBrowserCompat.MediaItem(
+            description,
+            MediaBrowserCompat.MediaItem.FLAG_BROWSABLE
+        )
+    }
+    
+    private fun createPlayableMediaItem(id: String, title: String, artist: String, 
+                                       albumTitle: String, iconUri: Uri?, mediaUri: Uri?): MediaBrowserCompat.MediaItem {
+        val description = MediaDescriptionCompat.Builder()
+            .setMediaId(id)
+            .setTitle(title)
+            .setSubtitle(artist)
+            .setDescription(albumTitle)
+            .setIconUri(iconUri)
+            .setMediaUri(mediaUri)
+            .build()
+        
+        return MediaBrowserCompat.MediaItem(
+            description,
+            MediaBrowserCompat.MediaItem.FLAG_PLAYABLE
+        )
+    }
+    
+    private fun isCarPackage(packageName: String): Boolean {
+        // Known Android Auto related packages
+        return packageName.contains("android.car") || 
+               packageName.contains("com.google.android.projection.gearhead") ||
+               packageName == "com.google.android.wearable.app" || 
+               packageName == "com.android.bluetooth"
     }
 }

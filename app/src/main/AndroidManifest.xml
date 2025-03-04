@@ -26,6 +26,11 @@
         <meta-data
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />
+            
+        <!-- Enable Android Auto voice actions -->
+        <meta-data
+            android:name="android.media.browse.SEARCH_SUPPORTED"
+            android:value="true" />
 
         <activity
             android:name=".MainActivity"

@@ -67,8 +67,12 @@ dependencies {
     implementation("androidx.media3:media3-common:1.5.1")
     implementation("androidx.media3:media3-ui:1.5.1")
     
-    // Media Compat for notification styling
+    // Media Compat for notification styling and Android Auto support
     implementation("androidx.media:media:1.7.0")
+    
+    // Android Automotive support
+    implementation("androidx.car.app:app:1.2.0")
+    implementation("androidx.car.app:app-automotive:1.2.0")
 
 
 
