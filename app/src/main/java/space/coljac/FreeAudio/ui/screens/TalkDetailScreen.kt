@@ -49,6 +49,7 @@ fun TalkDetailScreen(
     val currentTalk by viewModel.currentTalk.collectAsState()
     val downloadProgress by viewModel.downloadProgress.collectAsState()
     val isDownloaded by viewModel.isDownloaded.collectAsState()
+    val downloadError by viewModel.downloadError.collectAsState()
 
     Scaffold(
         topBar = {
@@ -273,6 +274,20 @@ fun TalkDetailScreen(
                 }
             }
         }
+    }
+
+    // Show download error dialog if there's an error
+    downloadError?.let { errorMessage ->
+        AlertDialog(
+            onDismissRequest = { viewModel.clearDownloadError() },
+            title = { Text("Download Failed") },
+            text = { Text(errorMessage) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.clearDownloadError() }) {
+                    Text("OK")
+                }
+            }
+        )
     }
 
     // Delete Confirmation Dialog

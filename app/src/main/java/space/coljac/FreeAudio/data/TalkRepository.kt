@@ -5,15 +5,21 @@ import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.yield
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
 import java.io.File
-import com.google.gson.Gson
 import java.io.FileOutputStream
+import java.io.IOException
+import java.net.HttpURLConnection
 import java.net.URL
 import java.util.zip.ZipInputStream
+import com.google.gson.Gson
 import space.coljac.FreeAudio.network.FBAService
 
 private const val TAG = "TalkRepository"
@@ -46,96 +52,170 @@ class TalkRepository(private val context: Context) {
                 
                 // First save talk metadata to ensure we have it even if download fails
                 saveTalkMetadata(talk)
-                
-                // Also save metadata for favorites
                 saveTalkMetadataForFavorite(talk)
                 
-                // Download the ZIP file containing all tracks
-                val zipUrl = URL("https://www.freebuddhistaudio.com/talks/mp3zips/${talk.id}.zip")
-                val connection = zipUrl.openConnection().apply {
-                    // Add a timeout to prevent hanging
-                    connectTimeout = 30000
-                    readTimeout = 30000
-                }
+                // Number of retries and current attempt counter
+                val maxRetries = 3
+                var currentRetry = 0
+                var downloadSuccess = false
+                var lastException: Exception? = null
                 
-                val totalBytes = connection.contentLength.toFloat()
-                if (totalBytes <= 0) {
-                    Log.w(TAG, "Could not determine content length, using estimate")
-                    // Use an estimate if content length is not available
-                    trySend(0.05f)
-                }
-                
-                var downloadedBytes = 0f
-                var trackCount = 0
-                Log.i(TAG, "Downloading talk ${talk.id} from $zipUrl")
-                
-                // Report some progress before we start extracting
-                trySend(0.1f)
-                
-                connection.getInputStream().use { input ->
-                    ZipInputStream(input).use { zipInput ->
-                        var entry = zipInput.nextEntry
-                        while (entry != null) {
-                            // Extract only MP3 files
-                            if (!entry.isDirectory && entry.name.endsWith(".mp3")) {
-                                val trackNumber = entry.name.substringBefore(".mp3").toIntOrNull()
-                                if (trackNumber != null) {
-                                    val trackFile = File(talkDir, "$trackNumber.mp3")
-                                    trackCount++
+                // Add more retry logic for robustness
+                while (currentRetry < maxRetries && !downloadSuccess) {
+                    try {
+                        if (currentRetry > 0) {
+                            Log.w(TAG, "Retrying download (attempt ${currentRetry + 1}/$maxRetries)...")
+                            // Send a progress update so the user knows we're retrying
+                            trySend(0.05f * currentRetry)
+                            // Wait a bit before retrying to avoid hammering the server
+                            delay(1000L * currentRetry)
+                        }
+                        
+                        // Use an HttpURLConnection for more control
+                        val zipUrl = URL("https://www.freebuddhistaudio.com/talks/mp3zips/${talk.id}.zip")
+                        val connection = zipUrl.openConnection() as HttpURLConnection
+                        
+                        with(connection) {
+                            connectTimeout = 30000 // 30 seconds
+                            readTimeout = 30000 // 30 seconds
+                            useCaches = false
+                            defaultUseCaches = false
+                            requestMethod = "GET"
+                            instanceFollowRedirects = true
+                            setRequestProperty("Connection", "close") // Don't keep connection alive
+                            setRequestProperty("User-Agent", "FreeAudio-App/1.0")
+                        }
+                        
+                        // Connect first to handle redirects and get content length
+                        connection.connect()
+                        
+                        // Check for HTTP errors
+                        val responseCode = connection.responseCode
+                        if (responseCode != HttpURLConnection.HTTP_OK) {
+                            throw IOException("HTTP error code: $responseCode - ${connection.responseMessage}")
+                        }
+                        
+                        val totalBytes = connection.contentLength.toFloat()
+                        if (totalBytes <= 0) {
+                            Log.w(TAG, "Could not determine content length, using estimate")
+                            trySend(0.05f)
+                        }
+                        
+                        var downloadedBytes = 0f
+                        var trackCount = 0
+                        Log.i(TAG, "Downloading talk ${talk.id} (attempt ${currentRetry + 1}) from $zipUrl")
+                        
+                        // Report progress before starting extraction
+                        trySend(0.1f)
+                        
+                        // Use buffered streams for better performance
+                        val inputStream = BufferedInputStream(connection.inputStream, 8192)
+                        inputStream.use { input ->
+                            ZipInputStream(input).use { zipInput ->
+                                var entry = zipInput.nextEntry
+                                while (entry != null) {
+                                    // Process entries with small delay between each to avoid overwhelming the system
+                                    yield() // Allow coroutine cancellation
                                     
-                                    FileOutputStream(trackFile).use { output ->
-                                        val buffer = ByteArray(8192)
-                                        var bytes = zipInput.read(buffer)
-                                        var lastEmitTime = System.currentTimeMillis()
-                                        
-                                        while (bytes >= 0) {
-                                            output.write(buffer, 0, bytes)
-                                            downloadedBytes += bytes
+                                    // Extract only MP3 files
+                                    if (!entry.isDirectory && entry.name.endsWith(".mp3")) {
+                                        val trackNumber = entry.name.substringBefore(".mp3").toIntOrNull()
+                                        if (trackNumber != null) {
+                                            val trackFile = File(talkDir, "$trackNumber.mp3")
+                                            trackCount++
                                             
-                                            // Calculate progress - handle case where content length is unknown
-                                            val progress = if (totalBytes > 0) {
-                                                downloadedBytes / totalBytes
-                                            } else {
-                                                // More gradual progress based on completed tracks and bytes
-                                                val trackProgress = trackCount.toFloat() / talk.tracks.size.coerceAtLeast(1)
-                                                // Start at 10% and gradually increase
-                                                0.1f + (0.85f * trackProgress)
-                                            }
-                                            
-                                            // Don't emit too frequently to avoid overwhelming the UI
-                                            val currentTime = System.currentTimeMillis()
-                                            if (currentTime - lastEmitTime > 100) {
-                                                // Ensure progress is always increasing
-                                                val safeProgress = progress.coerceIn(0.01f, 0.99f)
-                                                trySend(safeProgress)
-                                                lastEmitTime = currentTime
+                                            // Use buffered output for better performance
+                                            BufferedOutputStream(FileOutputStream(trackFile), 8192).use { output ->
+                                                val buffer = ByteArray(8192)
+                                                var bytes = zipInput.read(buffer)
+                                                var lastEmitTime = System.currentTimeMillis()
                                                 
-                                                // Log more detailed progress information
-                                                if (trackCount % 2 == 0) {
-                                                    Log.d(TAG, "Download progress: ${(safeProgress * 100).toInt()}%, track $trackCount/${talk.tracks.size}")
+                                                while (bytes >= 0) {
+                                                    yield() // Allow coroutine cancellation during long downloads
+                                                    
+                                                    output.write(buffer, 0, bytes)
+                                                    downloadedBytes += bytes
+                                                    
+                                                    // Calculate progress with better handling of unknown content length
+                                                    val progress = if (totalBytes > 0) {
+                                                        downloadedBytes / totalBytes
+                                                    } else {
+                                                        // More gradual progress based on completed tracks 
+                                                        val trackProgress = trackCount.toFloat() / talk.tracks.size.coerceAtLeast(1)
+                                                        // Start at 10% and gradually increase
+                                                        0.1f + (0.85f * trackProgress)
+                                                    }
+                                                    
+                                                    // Don't emit too frequently to avoid overwhelming the UI
+                                                    val currentTime = System.currentTimeMillis()
+                                                    if (currentTime - lastEmitTime > 200) {
+                                                        // Ensure progress is always increasing
+                                                        val safeProgress = progress.coerceIn(0.01f, 0.99f)
+                                                        trySend(safeProgress)
+                                                        lastEmitTime = currentTime
+                                                        
+                                                        // Log progress occasionally
+                                                        if (trackCount % 2 == 0) {
+                                                            Log.d(TAG, "Download progress: ${(safeProgress * 100).toInt()}%, track $trackCount/${talk.tracks.size}")
+                                                        }
+                                                    }
+                                                    
+                                                    try {
+                                                        bytes = zipInput.read(buffer)
+                                                    } catch (e: Exception) {
+                                                        Log.w(TAG, "Error reading zip entry: ${e.message}")
+                                                        throw e
+                                                    }
                                                 }
                                             }
-                                            
-                                            bytes = zipInput.read(buffer)
                                         }
+                                    }
+                                    
+                                    try {
+                                        zipInput.closeEntry()
+                                        entry = zipInput.nextEntry
+                                    } catch (e: Exception) {
+                                        Log.w(TAG, "Error getting next zip entry: ${e.message}")
+                                        throw e
                                     }
                                 }
                             }
-                            zipInput.closeEntry()
-                            entry = zipInput.nextEntry
+                        }
+                        
+                        // If we get here without exceptions, download succeeded
+                        downloadSuccess = true
+                        trySend(1.0f) // 100% progress
+                        Log.i(TAG, "Download completed for talk ${talk.id}, extracted $trackCount tracks")
+                        
+                    } catch (e: Exception) {
+                        lastException = e
+                        Log.e(TAG, "Error downloading talk (attempt ${currentRetry + 1}): ${e.message}", e)
+                        currentRetry++
+                        
+                        // If this was our last retry and it failed, clean up
+                        if (currentRetry >= maxRetries) {
+                            Log.e(TAG, "All download retries failed for talk ${talk.id}")
+                            // Clean up any partially downloaded files
+                            if (talkDir.exists()) {
+                                talkDir.listFiles()?.forEach { it.delete() }
+                                talkDir.delete()
+                            }
                         }
                     }
                 }
                 
-                // Ensure we emit 100% at the end
-                trySend(1.0f)
-                Log.i(TAG, "Download completed for talk ${talk.id}, extracted $trackCount tracks")
-                close() // Close the channel when done
+                // After all retries, check if we succeeded or need to report final error
+                if (downloadSuccess) {
+                    close() // Close channel normally on success
+                } else {
+                    // Close with the last exception we encountered
+                    close(lastException ?: IOException("Failed to download after $maxRetries attempts"))
+                }
                 
             } catch (e: Exception) {
-                Log.e(TAG, "Error downloading talk: ${e.message}", e)
+                Log.e(TAG, "Unexpected error in download flow: ${e.message}", e)
                 
-                // Clean up any partially downloaded files if error occurs
+                // Clean up any partially downloaded files
                 if (talkDir.exists()) {
                     talkDir.listFiles()?.forEach { it.delete() }
                     talkDir.delete()

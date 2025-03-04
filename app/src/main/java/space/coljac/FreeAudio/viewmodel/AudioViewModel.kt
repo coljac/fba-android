@@ -48,6 +48,10 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _isDownloaded = MutableStateFlow(false)
     val isDownloaded: StateFlow<Boolean> = _isDownloaded
+    
+    // Track download errors to communicate to UI
+    private val _downloadError = MutableStateFlow<String?>(null)
+    val downloadError: StateFlow<String?> = _downloadError
 
     private val _downloadedTalks = MutableStateFlow<List<Talk>>(emptyList())
     val downloadedTalks: StateFlow<List<Talk>> = _downloadedTalks
@@ -330,6 +334,9 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             try {
+                // Reset any previous download errors
+                _downloadError.value = null
+                
                 // Set initial progress to indicate download has started
                 _downloadProgress.value = 0f
                 
@@ -337,34 +344,59 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
                 Log.d(TAG, "Starting download for talk: ${talk.id}")
                 
                 // Make sure the current talk is set without triggering playback
-                // This is important to avoid the issue where downloading starts playback
                 if (_currentTalk.value?.id != talk.id) {
                     _currentTalk.value = talk
                     _isDownloaded.value = repository.isDownloaded(talk.id)
                 }
                 
-                // Collect progress updates
-                repository.downloadTalk(talk).collect { progress ->
-                    _downloadProgress.value = progress
-                    Log.d(TAG, "Download progress: ${(progress * 100).toInt()}%")
+                try {
+                    // Collect progress updates
+                    repository.downloadTalk(talk).collect { progress ->
+                        _downloadProgress.value = progress
+                        Log.d(TAG, "Download progress: ${(progress * 100).toInt()}%")
+                    }
+                    
+                    // Update download status on completion
+                    _downloadProgress.value = null
+                    _isDownloaded.value = true
+                    
+                    // Refresh downloaded talks list
+                    loadDownloadedTalks()
+                    
+                    Log.d(TAG, "Download completed for talk: ${talk.id}")
+                } catch (e: Exception) {
+                    // Handle download errors gracefully
+                    Log.e(TAG, "Download error: ${e.message}", e)
+                    _downloadProgress.value = null
+                    
+                    // Set error message for UI to display
+                    val errorMessage = when {
+                        e.message?.contains("connection abort") == true -> 
+                            "Connection error. Please check your internet connection and try again."
+                        e.message?.contains("timeout") == true ->
+                            "Download timed out. Please try again later."
+                        e.message?.contains("404") == true ->
+                            "Talk not found on server. Please try a different talk."
+                        e.message?.contains("HTTP error") == true ->
+                            "Server error. Please try again later."
+                        else -> "Download failed: ${e.message ?: "Unknown error"}"
+                    }
+                    
+                    _downloadError.value = errorMessage
+                    Log.e(TAG, "Download error message: $errorMessage")
                 }
-                
-                // Update download status on completion
-                _downloadProgress.value = null
-                _isDownloaded.value = true
-                
-                // Refresh downloaded talks list
-                loadDownloadedTalks()
-                
-                Log.d(TAG, "Download completed for talk: ${talk.id}")
             } catch (e: Exception) {
-                // Handle error cases
-                Log.e(TAG, "Download error: ${e.message}", e)
+                // Catch any unexpected errors in the flow setup
+                Log.e(TAG, "Unexpected error setting up download: ${e.message}", e)
                 _downloadProgress.value = null
-                
-                // Show toast or other notification here
+                _downloadError.value = "Failed to start download: ${e.message ?: "Unknown error"}"
             }
         }
+    }
+    
+    // Method to clear download errors (to be called after user dismisses error message)
+    fun clearDownloadError() {
+        _downloadError.value = null
     }
 
     fun deleteTalk(talk: Talk) {
