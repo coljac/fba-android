@@ -33,6 +33,8 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     private val _isUpdatingSearchResults = MutableStateFlow(false)
     val isUpdatingSearchResults: StateFlow<Boolean> = _isUpdatingSearchResults
     
+    // No need to expose viewModelScope, we'll use a different approach
+    
     private var player: ExoPlayer? = null
     
     private val _currentTalk = MutableStateFlow<Talk?>(null)
@@ -67,6 +69,14 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     init {
         loadDownloadedTalks()
         loadFavorites()
+        loadRecentPlays()
+    }
+    
+    private fun loadRecentPlays() {
+        viewModelScope.launch {
+            _recentPlays.value = repository.getRecentPlays()
+            Log.d(TAG, "Loaded ${_recentPlays.value.size} recent plays on startup")
+        }
     }
 
     private fun loadDownloadedTalks() {
@@ -175,7 +185,7 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         
         viewModelScope.launch {
             repository.addToRecentPlays(talk)
-            _recentPlays.value = repository.getRecentPlays()
+            loadRecentPlays() // Use our centralized loading function
         }
     }
     
@@ -374,6 +384,12 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     fun refreshDownloads() {
         viewModelScope.launch {
             loadDownloadedTalks()
+        }
+    }
+    
+    fun refreshRecentPlays() {
+        viewModelScope.launch {
+            loadRecentPlays()
         }
     }
     

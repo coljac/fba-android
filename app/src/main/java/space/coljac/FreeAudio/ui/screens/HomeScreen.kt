@@ -8,10 +8,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
+import com.google.accompanist.swiperefresh.SwipeRefresh
+import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import androidx.compose.runtime.rememberCoroutineScope
 import space.coljac.FreeAudio.data.Talk
 import space.coljac.FreeAudio.ui.components.TalkItem
 import space.coljac.FreeAudio.viewmodel.AudioViewModel
@@ -38,11 +43,31 @@ fun HomeScreen(
             )
         }
     ) { padding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Add pull-to-refresh functionality using SwipeRefresh
+            var isRefreshing by remember { mutableStateOf(false) }
+            
+            // Create a coroutine scope that follows the lifecycle of this composable
+            val scope = rememberCoroutineScope()
+            
+            SwipeRefresh(
+                state = rememberSwipeRefreshState(isRefreshing),
+                onRefresh = {
+                    // Refresh the recent plays list
+                    viewModel.refreshRecentPlays()
+                    // Use a coroutine to update the refresh state after a delay
+                    scope.launch {
+                        isRefreshing = true
+                        kotlinx.coroutines.delay(800)
+                        isRefreshing = false
+                    }
+                }
+            ) {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding)
+                ) {
             if (recentPlays.isNotEmpty()) {
                 item {
                     Text(
@@ -77,6 +102,8 @@ fun HomeScreen(
                             style = MaterialTheme.typography.bodyLarge
                         )
                     }
+                    }
+                }
                 }
             }
         }

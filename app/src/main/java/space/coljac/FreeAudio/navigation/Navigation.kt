@@ -2,6 +2,7 @@ package space.coljac.FreeAudio.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -71,22 +72,30 @@ fun AppNavigation(
                        currentRoute == Screen.Favorites.route || 
                        currentRoute == Screen.Downloads.route)
     
+    // Create a compact layout with no extra whitespace
+    val currentTalk by viewModel.currentTalk.collectAsState()
+    val hasPlayerBar = currentTalk != null && 
+        currentRoute?.startsWith("talk/") != true // Hide on talk detail screen
+    
     Scaffold(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(bottom = navigationBarPadding.calculateBottomPadding()),
+        modifier = Modifier.fillMaxSize(),
         bottomBar = {
-            Column {
-                // Put player bar directly above the navigation bar
-                BottomPlayerBar(
-                    viewModel = viewModel,
-                    onTalkClick = { talk ->
-                        navController.navigate(Screen.TalkDetail.createRoute(talk.id))
-                    },
-                    currentScreen = if (currentRoute?.startsWith("talk/") == true) "TalkDetail" else ""
-                )
+            // This is crucial - only take the space actually needed
+            Column(
+                modifier = Modifier.wrapContentHeight()
+            ) {
+                // Only show player bar if there's an active talk and not on detail screen
+                if (hasPlayerBar) {
+                    BottomPlayerBar(
+                        viewModel = viewModel,
+                        onTalkClick = { talk ->
+                            navController.navigate(Screen.TalkDetail.createRoute(talk.id))
+                        },
+                        currentScreen = if (currentRoute?.startsWith("talk/") == true) "TalkDetail" else ""
+                    )
+                }
                 
-                // Show bottom navigation bar for main screens
+                // Navigation bar for main screens
                 if (showBottomNav) {
                     NavigationBar {
                         bottomNavItems.forEach { item ->

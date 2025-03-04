@@ -88,7 +88,9 @@ dependencies {
 
     // Material icons extended
     implementation("androidx.compose.material:material-icons-extended:1.6.1")
-
+    
+    // Swipe refresh for pull-to-refresh functionality
+    implementation("com.google.accompanist:accompanist-swiperefresh:0.33.2-alpha")
 
 //    implementation("androidx.media3:media3-exoplayer:1.2.0")
 //    implementation("androidx.media3:media3-session:1.2.0")

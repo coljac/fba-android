@@ -30,13 +30,15 @@ fun BottomPlayerBar(
 
     currentTalk?.let { talk ->
         Surface(
-            modifier = modifier.fillMaxWidth(),
+            modifier = modifier
+                .fillMaxWidth()
+                .wrapContentHeight(), // Only take the height we need
             tonalElevation = 8.dp
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(64.dp)
+                    .height(56.dp) // Slightly smaller height for compactness
                     .padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {

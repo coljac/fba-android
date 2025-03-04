@@ -27,11 +27,12 @@ fun SearchScreen(
             )
         }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+            ) {
             SearchBar(onSearch = { query ->
                 if (query.length >= 3) {
                     viewModel.search(query)
@@ -51,7 +52,9 @@ fun SearchScreen(
                 }
                 is SearchState.Success -> {
                     val results = (searchState as SearchState.Success).response
-                    LazyColumn {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize() // Ensure the list fills all available space
+                    ) {
                         item {
                             if (viewModel.isUpdatingSearchResults.collectAsState().value) {
                                 Row(
@@ -98,6 +101,7 @@ fun SearchScreen(
                 SearchState.Empty -> {
                     // Show nothing or initial state
                 }
+            }
             }
         }
     }
