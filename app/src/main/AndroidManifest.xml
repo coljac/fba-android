@@ -31,6 +31,15 @@
         <meta-data
             android:name="android.media.browse.SEARCH_SUPPORTED"
             android:value="true" />
+            
+        <!-- Auto app icon and theme -->
+        <meta-data
+            android:name="com.google.android.gms.car.application.icon"
+            android:resource="@drawable/ic_auto_app_icon" />
+        
+        <meta-data
+            android:name="com.google.android.gms.car.application.theme"
+            android:resource="@style/Theme.FreeAudio" />
 
         <activity
             android:name=".MainActivity"
