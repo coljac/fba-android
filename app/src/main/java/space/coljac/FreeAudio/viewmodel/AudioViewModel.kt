@@ -148,17 +148,28 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 
                 // Create rich metadata for the media session and lock screen controls
+                // Log the values we're setting for debugging
+                Log.d(TAG, "Creating MediaItem with metadata:")
+                Log.d(TAG, "  - Title: ${track.title}")
+                Log.d(TAG, "  - Artist: ${talk.speaker}")
+                Log.d(TAG, "  - Album: Free Buddhist Audio")
+                Log.d(TAG, "  - Artwork URI: ${talk.imageUrl}")
+                
                 MediaItem.Builder()
                     .setUri(uri)
+                    .setMediaId("talk_${talk.id}_track_${track.number}")
                     .setMediaMetadata(
                         androidx.media3.common.MediaMetadata.Builder()
                             .setTitle(track.title)
                             .setArtist(talk.speaker)
-                            .setAlbumTitle(talk.title)
+                            .setAlbumTitle("Free Buddhist Audio")
                             .setArtworkUri(Uri.parse(talk.imageUrl))
                             .setDisplayTitle(track.title)
                             .setSubtitle(talk.speaker)
-                            // Note: We're keeping it simpler for compatibility
+                            .setDescription("Buddhist talk by ${talk.speaker}")
+                            // Extra fields for better compatibility with various systems
+                            .setIsPlayable(true)
+                            .setIsBrowsable(false)
                             .build()
                     )
                     .build()
@@ -196,6 +207,24 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     private fun startAudioService() {
         val context = getApplication<Application>().applicationContext
         val intent = Intent(context, Class.forName("com.freebuddhistaudio.FreeBuddhistAudio.playback.AudioService"))
+        
+        // Send explicit metadata information with the intent to ensure service has correct data
+        val currentTalk = _currentTalk.value
+        val currentTrack = _playbackState.value.currentTrack
+        
+        if (currentTalk != null && currentTrack != null) {
+            // Add metadata to intent for direct access by service
+            intent.putExtra("EXTRA_TRACK_TITLE", currentTrack.title)
+            intent.putExtra("EXTRA_SPEAKER_NAME", currentTalk.speaker)
+            intent.putExtra("EXTRA_ARTWORK_URI", currentTalk.imageUrl)
+            
+            Log.d(TAG, "Starting service with explicit metadata:")
+            Log.d(TAG, "  Title: ${currentTrack.title}")
+            Log.d(TAG, "  Artist: ${currentTalk.speaker}")
+            Log.d(TAG, "  Album: Free Buddhist Audio")
+            Log.d(TAG, "  Artwork: ${currentTalk.imageUrl}")
+        }
+        
         context.startService(intent)
     }
     

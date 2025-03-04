@@ -35,8 +35,12 @@ import androidx.media3.session.MediaSessionService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.freebuddhistaudio.FreeBuddhistAudio.MainActivity
 import com.freebuddhistaudio.FreeBuddhistAudio.R
+import java.net.HttpURLConnection
+import java.net.URL
 
 private const val NOTIFICATION_ID = 123
 private const val CHANNEL_ID = "FreeAudio_playback_channel"
@@ -303,6 +307,13 @@ class AudioService : MediaBrowserServiceCompat() {
             }
             
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                Log.d(TAG, "Media item transition detected: ${mediaItem?.mediaId}")
+                if (mediaItem != null) {
+                    Log.d(TAG, "  Title: ${mediaItem.mediaMetadata.title}")
+                    Log.d(TAG, "  Artist: ${mediaItem.mediaMetadata.artist}")
+                    Log.d(TAG, "  Album: ${mediaItem.mediaMetadata.albumTitle}")
+                }
+                // Force immediate metadata update for the lock screen
                 updateMediaMetadata()
                 updateMediaSessionState()
                 updateNotificationState()
@@ -312,7 +323,22 @@ class AudioService : MediaBrowserServiceCompat() {
                 updateMediaSessionState()
                 updateNotificationState()
             }
+            
+            // Add explicit metadata listener to ensure we capture all changes
+            override fun onMediaMetadataChanged(mediaMetadata: androidx.media3.common.MediaMetadata) {
+                Log.d(TAG, "Media metadata changed explicitly")
+                Log.d(TAG, "  Title: ${mediaMetadata.title}")
+                Log.d(TAG, "  Artist: ${mediaMetadata.artist}")
+                Log.d(TAG, "  Album: ${mediaMetadata.albumTitle}")
+                updateMediaMetadata()
+                updateNotificationState()
+            }
         })
+        
+        // Force an initial metadata update after setup
+        if (player.currentMediaItem != null) {
+            updateMediaMetadata()
+        }
     }
 
     private fun createNotificationChannel() {
@@ -395,15 +421,36 @@ class AudioService : MediaBrowserServiceCompat() {
         val currentItem = player.currentMediaItem ?: return
         val mediaMetadata = currentItem.mediaMetadata
         
-        // Enhanced metadata for Android Auto
+        // Log the exact values for debugging
+        Log.d(TAG, "Updating Media Metadata for Media Session")
+        Log.d(TAG, "  - MediaItem ID: ${currentItem.mediaId}")
+        Log.d(TAG, "  - Title: ${mediaMetadata.title?.toString()}")
+        Log.d(TAG, "  - Artist: ${mediaMetadata.artist?.toString()}")
+        Log.d(TAG, "  - Album: ${mediaMetadata.albumTitle?.toString()}")
+        Log.d(TAG, "  - Display Title: ${mediaMetadata.displayTitle?.toString()}")
+        Log.d(TAG, "  - Subtitle: ${mediaMetadata.subtitle?.toString()}")
+        Log.d(TAG, "  - Description: ${mediaMetadata.description?.toString()}")
+        Log.d(TAG, "  - Artwork URI: ${mediaMetadata.artworkUri}")
+        
+        // Enhanced metadata for Android Auto and lock screen with direct values 
+        // to avoid any CharSequence conversion issues
+        val title = mediaMetadata.title?.toString() ?: "Unknown TitleNope"
+        val artist = mediaMetadata.artist?.toString() ?: "Unknown Artist"
+        val album = "Free Buddhist Audio"
+        
         val metadataBuilder = MediaMetadataCompat.Builder()
-            .putString(MediaMetadataCompat.METADATA_KEY_TITLE, mediaMetadata.title?.toString() ?: "Unknown Title")
-            .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, mediaMetadata.artist?.toString() ?: "Unknown Artist")
-            .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, mediaMetadata.albumTitle?.toString() ?: "Free Buddhist Audio")
+            // Basic metadata for MediaSession
+            .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title)
+            .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, artist)
+            .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, album)
             .putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ARTIST, "Free Buddhist Audio")
-            .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, mediaMetadata.title?.toString() ?: "Unknown Title")
-            .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, mediaMetadata.artist?.toString() ?: "Unknown Artist")
+            
+            // Display metadata for lock screen and notifications
+            .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, title)
+            .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, artist)
             .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_DESCRIPTION, mediaMetadata.description?.toString() ?: "Buddhist Talk")
+            
+            // Other metadata
             .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, player.duration)
             .putString(MediaMetadataCompat.METADATA_KEY_MEDIA_ID, currentItem.mediaId)
             .putLong(MediaMetadataCompat.METADATA_KEY_TRACK_NUMBER, (player.currentMediaItemIndex + 1).toLong())
@@ -413,34 +460,181 @@ class AudioService : MediaBrowserServiceCompat() {
         try {
             val artworkUri = mediaMetadata.artworkUri
             if (artworkUri != null) {
-                // For Android Auto, it's important to have album art
-                val bitmap = BitmapFactory.decodeResource(resources, R.drawable.ic_notification)
-                if (bitmap != null) {
-                    metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bitmap)
-                    metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, bitmap)
-                    metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, artworkUri.toString())
-                    metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON_URI, artworkUri.toString())
+                Log.d(TAG, "Attempting to load artwork from: $artworkUri")
+                
+                // For remote images, we need to download them in a background thread
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        // First try to download and use the actual image
+                        val bitmap = loadBitmapFromUri(artworkUri)
+                        
+                        if (bitmap != null) {
+                            Log.d(TAG, "Successfully loaded artwork bitmap")
+                            
+                            // Update metadata on main thread
+                            withContext(Dispatchers.Main) {
+                                // Only update if the player is still active and on the same track
+                                if (player.currentMediaItem?.mediaId == currentItem.mediaId) {
+                                    val updatedBuilder = metadataBuilder
+                                        .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bitmap)
+                                        .putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, bitmap)
+                                        .putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, artworkUri.toString())
+                                        .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON_URI, artworkUri.toString())
+                                    
+                                    mediaSessionCompat?.setMetadata(updatedBuilder.build())
+                                    
+                                    // Also update notification with artwork
+                                    updateNotificationState()
+                                }
+                            }
+                        } else {
+                            // Use default icon as fallback
+                            withContext(Dispatchers.Main) {
+                                setDefaultArtwork(metadataBuilder)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error loading artwork from URI", e)
+                        
+                        // Use default icon as fallback
+                        withContext(Dispatchers.Main) {
+                            setDefaultArtwork(metadataBuilder)
+                        }
+                    }
                 }
             } else {
-                // Always provide a default artwork for Auto display
-                val bitmap = BitmapFactory.decodeResource(resources, R.drawable.ic_notification)
-                if (bitmap != null) {
-                    metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bitmap)
-                    metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, bitmap)
-                }
+                // No artwork URI, use default
+                setDefaultArtwork(metadataBuilder)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to load artwork", e)
-            // Always provide a default artwork for Auto display
-            val bitmap = BitmapFactory.decodeResource(resources, R.drawable.ic_notification)
-            if (bitmap != null) {
-                metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bitmap)
-                metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, bitmap)
-            }
+            Log.e(TAG, "Failed to handle artwork", e)
+            // Use default artwork
+            setDefaultArtwork(metadataBuilder)
         }
         
-        // Set metadata
+        // Set initial metadata (artwork may be updated later)
         mediaSessionCompat?.setMetadata(metadataBuilder.build())
+    }
+    
+    private fun setDefaultArtwork(metadataBuilder: MediaMetadataCompat.Builder) {
+        val bitmap = BitmapFactory.decodeResource(resources, R.drawable.ic_notification)
+        if (bitmap != null) {
+            metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bitmap)
+            metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, bitmap)
+            mediaSessionCompat?.setMetadata(metadataBuilder.build())
+        }
+    }
+    
+    /**
+     * Force update metadata using explicit values from the ViewModel
+     * This provides a direct way to set metadata when the player's metadata might be delayed
+     */
+    private fun forceUpdateMetadata(title: String, artist: String, artworkUriString: String?) {
+        Log.d(TAG, "Force updating metadata with explicit values")
+        Log.d(TAG, "  Title: $title")
+        Log.d(TAG, "  Artist: $artist")
+        Log.d(TAG, "  Album: Free Buddhist Audio")
+        
+        // Build metadata with explicit values
+        val metadataBuilder = MediaMetadataCompat.Builder()
+            // Basic metadata for MediaSession
+            .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title)
+            .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, artist)
+            .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, "Free Buddhist Audio")
+            .putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ARTIST, "Free Buddhist Audio")
+            
+            // Display metadata for lock screen and notifications
+            .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, title)
+            .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, artist)
+            .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_DESCRIPTION, "Buddhist Talk by $artist")
+            
+            // Other metadata
+            .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, player.duration)
+            
+        if (artworkUriString != null) {
+            metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, artworkUriString)
+            metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON_URI, artworkUriString)
+            
+            // Attempt to load artwork in the background
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val artworkUri = Uri.parse(artworkUriString)
+                    val bitmap = loadBitmapFromUri(artworkUri)
+                    
+                    if (bitmap != null) {
+                        withContext(Dispatchers.Main) {
+                            val updatedBuilder = MediaMetadataCompat.Builder(metadataBuilder.build())
+                                .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bitmap)
+                                .putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, bitmap)
+                            
+                            // Set updated metadata with artwork
+                            mediaSessionCompat?.setMetadata(updatedBuilder.build())
+                            
+                            // Update notification to show artwork
+                            updateNotificationState()
+                            
+                            Log.d(TAG, "Added artwork to forced metadata update")
+                        }
+                    } else {
+                        withContext(Dispatchers.Main) {
+                            setDefaultArtwork(metadataBuilder)
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error loading artwork for forced metadata update", e)
+                    withContext(Dispatchers.Main) {
+                        setDefaultArtwork(metadataBuilder)
+                    }
+                }
+            }
+        } else {
+            // No artwork URI, use default
+            setDefaultArtwork(metadataBuilder)
+        }
+        
+        // Set initial metadata even before artwork loads
+        mediaSessionCompat?.setMetadata(metadataBuilder.build())
+        
+        // Update notification with new metadata
+        updateNotificationState()
+    }
+    
+    private suspend fun loadBitmapFromUri(uri: Uri): Bitmap? {
+        return try {
+            // For http/https URIs
+            if (uri.scheme == "http" || uri.scheme == "https") {
+                val url = URL(uri.toString())
+                val connection = url.openConnection() as HttpURLConnection
+                connection.connectTimeout = 5000
+                connection.readTimeout = 10000
+                connection.doInput = true
+                connection.connect()
+                
+                if (connection.responseCode == HttpURLConnection.HTTP_OK) {
+                    val bitmap = BitmapFactory.decodeStream(connection.inputStream)
+                    connection.disconnect()
+                    bitmap
+                } else {
+                    connection.disconnect()
+                    null
+                }
+            } 
+            // For file URIs
+            else if (uri.scheme == "file") {
+                BitmapFactory.decodeFile(uri.path)
+            } 
+            // For content URIs
+            else if (uri.scheme == "content") {
+                contentResolver.openInputStream(uri)?.use { inputStream ->
+                    BitmapFactory.decodeStream(inputStream)
+                }
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading bitmap from URI", e)
+            null
+        }
     }
     
     private fun updateNotificationState() {
@@ -460,9 +654,36 @@ class AudioService : MediaBrowserServiceCompat() {
     }
     
     private fun createNotification(): Notification {
+        // Get metadata directly from MediaSessionCompat for consistency
+        val metadata = mediaSessionCompat?.controller?.metadata
+        
+        Log.d(TAG, "Creating Notification with MediaSessionCompat metadata:")
+        if (metadata != null) {
+            Log.d(TAG, "  - TITLE: ${metadata.getString(MediaMetadataCompat.METADATA_KEY_TITLE)}")
+            Log.d(TAG, "  - ARTIST: ${metadata.getString(MediaMetadataCompat.METADATA_KEY_ARTIST)}")
+            Log.d(TAG, "  - ALBUM: ${metadata.getString(MediaMetadataCompat.METADATA_KEY_ALBUM)}")
+            Log.d(TAG, "  - DISPLAY_TITLE: ${metadata.getString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE)}")
+            Log.d(TAG, "  - DISPLAY_SUBTITLE: ${metadata.getString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE)}")
+            Log.d(TAG, "  - Has Album Art: ${metadata.getBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART) != null}")
+        } else {
+            Log.d(TAG, "  - No MediaSessionCompat metadata available")
+        }
+        
+        // Use values from MediaSessionCompat metadata as primary source,
+        // fallback to player's current media item as backup
         val currentItem = player.currentMediaItem
-        val title = currentItem?.mediaMetadata?.title ?: "Free Buddhist Audio"
-        val artist = currentItem?.mediaMetadata?.artist ?: "Unknown"
+        
+        // Clear, consistent values
+        val title = metadata?.getString(MediaMetadataCompat.METADATA_KEY_TITLE) 
+            ?: currentItem?.mediaMetadata?.title?.toString() 
+            ?: "Unknown TitleBoy"
+            
+        val artist = metadata?.getString(MediaMetadataCompat.METADATA_KEY_ARTIST) 
+            ?: currentItem?.mediaMetadata?.artist?.toString() 
+            ?: "Unknown Speaker"
+            
+        // Get album art from session metadata
+        val albumArt = metadata?.getBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART)
         
         // Create play intent
         val playIntent = PendingIntent.getService(
@@ -514,14 +735,26 @@ class AudioService : MediaBrowserServiceCompat() {
                     PlaybackStateCompat.ACTION_STOP
                 )
             )
-        
-        // Build a standard media notification
+            
+        // Build a standard media notification using our clear metadata values
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(artist)
-            .setSubText(if (player.isPlaying) "Playing" else "Paused")
+            .setSubText("Free Buddhist Audio")
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentIntent(
+            
+        // Add album art if available
+        if (albumArt != null) {
+            builder.setLargeIcon(albumArt)
+        } else {
+            // Use app icon as fallback
+            val defaultIcon = BitmapFactory.decodeResource(resources, R.drawable.ic_notification)
+            if (defaultIcon != null) {
+                builder.setLargeIcon(defaultIcon)
+            }
+        }
+        
+        builder.setContentIntent(
                 PendingIntent.getActivity(
                     this,
                     0,
@@ -591,6 +824,21 @@ class AudioService : MediaBrowserServiceCompat() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d(TAG, "onStartCommand: intent=${intent?.action}")
         
+        // Check for explicit metadata sent from ViewModel
+        val trackTitle = intent?.getStringExtra("EXTRA_TRACK_TITLE")
+        val speakerName = intent?.getStringExtra("EXTRA_SPEAKER_NAME")
+        val artworkUri = intent?.getStringExtra("EXTRA_ARTWORK_URI")
+        
+        if (trackTitle != null && speakerName != null) {
+            Log.d(TAG, "Received explicit metadata in intent:")
+            Log.d(TAG, "  Title: $trackTitle")
+            Log.d(TAG, "  Artist: $speakerName")
+            Log.d(TAG, "  Artwork URI: $artworkUri")
+            
+            // Force metadata update using these values
+            forceUpdateMetadata(trackTitle, speakerName, artworkUri)
+        }
+        
         // Handle media button events from MediaButtonReceiver
         MediaButtonReceiver.handleIntent(mediaSessionCompat, intent)
         
@@ -602,8 +850,20 @@ class AudioService : MediaBrowserServiceCompat() {
                     player.prepare()
                 }
                 player.play()
+                
+                // When starting playback, ensure we have updated metadata
+                updateMediaMetadata()
                 updateMediaSessionState()
                 updateNotificationState()
+                
+                // Log current metadata for debugging
+                val currentItem = player.currentMediaItem
+                if (currentItem != null) {
+                    Log.d(TAG, "ACTION_PLAY with metadata:")
+                    Log.d(TAG, "  Title: ${currentItem.mediaMetadata.title}")
+                    Log.d(TAG, "  Artist: ${currentItem.mediaMetadata.artist}")
+                    Log.d(TAG, "  Album: ${currentItem.mediaMetadata.albumTitle}")
+                }
             }
             "ACTION_PAUSE" -> {
                 Log.d(TAG, "Handling ACTION_PAUSE")

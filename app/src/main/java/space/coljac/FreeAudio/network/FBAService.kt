@@ -158,7 +158,7 @@ class FBAService {
                 Log.d(TAG, "Successfully parsed talk object for ID: $talkId")
                 
                 // Extract basic talk info with error handling
-                val title = if (talkObject.has("title")) decodeHtml(talkObject.get("title").asString) else "Unknown Title"
+                val title = if (talkObject.has("title")) decodeHtml(talkObject.get("title").asString) else "Unknown TitleCol"
                 val speaker = if (talkObject.has("speaker")) decodeHtml(talkObject.get("speaker").asString) else "Unknown Speaker"
                 val year = if (talkObject.has("year")) talkObject.get("year").asString else ""
                 val blurb = if (talkObject.has("blurb")) decodeHtml(talkObject.get("blurb").asString) else ""
