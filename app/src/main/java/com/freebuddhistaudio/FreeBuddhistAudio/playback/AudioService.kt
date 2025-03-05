@@ -45,6 +45,8 @@ import java.net.URL
 private const val NOTIFICATION_ID = 123
 private const val CHANNEL_ID = "FreeAudio_playback_channel"
 private const val TAG = "AudioService"
+private const val ACTION_PLAY_FROM_START = "ACTION_PLAY_FROM_START"
+private const val ACTION_RESUME_PLAYBACK = "ACTION_RESUME_PLAYBACK"
 
 @UnstableApi
 class AudioService : MediaBrowserServiceCompat() {
@@ -137,112 +139,17 @@ class AudioService : MediaBrowserServiceCompat() {
             setCallback(object : MediaSessionCompat.Callback() {
                 override fun onPlay() {
                     Log.d(TAG, "MediaSessionCompat.Callback - onPlay()")
-                    
-                    // Log detailed player state for debugging
-                    Log.d(TAG, "Before play action - playWhenReady: ${player.playWhenReady}, " +
-                          "playbackState: ${playbackStateToString(player.playbackState)}, " +
-                          "isPlaying: ${player.isPlaying}, " +
-                          "mediaItemCount: ${player.mediaItemCount}")
-                    
-                    // Handle different player states
-                    when (player.playbackState) {
-                        Player.STATE_IDLE -> {
-                            Log.d(TAG, "Player is IDLE, preparing player first")
-                            player.prepare()
-                        }
-                        Player.STATE_ENDED -> {
-                            Log.d(TAG, "Player is ENDED, seeking to start and preparing")
-                            player.seekTo(0)
-                            player.prepare()
-                        }
-                        Player.STATE_BUFFERING -> {
-                            Log.d(TAG, "Player is BUFFERING, attempting to play anyway")
-                        }
-                        Player.STATE_READY -> {
-                            Log.d(TAG, "Player is READY, can play directly")
-                        }
+                    if (player.playbackState == Player.STATE_IDLE) {
+                        player.prepare()
                     }
-                    
-                    if (player.mediaItemCount <= 0) {
-                        Log.d(TAG, "⚠️ No media items available, can't play")
-                        return
-                    }
-                    
-                    // Use multiple approaches to ensure playback starts
-                    try {
-                        // Method 1: Use play()
-                        player.play()
-                        Log.d(TAG, "Called player.play()")
-                        
-                        // Method 2: Set playWhenReady = true
-                        player.playWhenReady = true
-                        Log.d(TAG, "Set player.playWhenReady = true")
-                        
-                        // Wait a moment to make sure state changes are applied
-                        Handler(Looper.getMainLooper()).postDelayed({
-                            // Method 3: Force through the player API if still not playing
-                            if (!player.isPlaying && player.playbackState == Player.STATE_READY) {
-                                Log.d(TAG, "Player still not playing, trying direct Player API control")
-                                player.play()
-                            }
-                            
-                            // Update states in media session and notification
-                            updateMediaSessionState()
-                            updateNotificationState()
-                            
-                            Log.d(TAG, "Updated state after play: isPlaying=${player.isPlaying}, " +
-                                  "playWhenReady=${player.playWhenReady}, " +
-                                  "playbackState=${playbackStateToString(player.playbackState)}")
-                            
-                            // Broadcast the playback state to ensure the whole app knows about it
-                            val intent = Intent("ACTION_PLAYBACK_STATE_CHANGED")
-                            intent.putExtra("IS_PLAYING", player.isPlaying)
-                            sendBroadcast(intent)
-                        }, 200)
-                        
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error starting playback", e)
-                    }
+                    player.play()
+                    updatePlaybackState()
                 }
                 
                 override fun onPause() {
                     Log.d(TAG, "MediaSessionCompat.Callback - onPause()")
-                    
-                    // Log detailed player state for debugging
-                    Log.d(TAG, "Before pause action - playWhenReady: ${player.playWhenReady}, " +
-                          "playbackState: ${playbackStateToString(player.playbackState)}, " +
-                          "isPlaying: ${player.isPlaying}")
-                    
-                    try {
-                        // Use multiple approaches to ensure playback pauses
-                        
-                        // Method 1: Use pause()
-                        player.pause()
-                        Log.d(TAG, "Called player.pause()")
-                        
-                        // Method 2: Set playWhenReady = false
-                        player.playWhenReady = false
-                        Log.d(TAG, "Set player.playWhenReady = false")
-                        
-                        // Wait a moment to make sure state changes are applied
-                        Handler(Looper.getMainLooper()).postDelayed({
-                            // Update states in media session and notification
-                            updateMediaSessionState()
-                            updateNotificationState()
-                            
-                            Log.d(TAG, "Updated state after pause: isPlaying=${player.isPlaying}, " +
-                                  "playWhenReady=${player.playWhenReady}, " +
-                                  "playbackState=${playbackStateToString(player.playbackState)}")
-                            
-                            // Broadcast the playback state to ensure the whole app knows about it
-                            val intent = Intent("ACTION_PLAYBACK_STATE_CHANGED")
-                            intent.putExtra("IS_PLAYING", player.isPlaying)
-                            sendBroadcast(intent)
-                        }, 200)
-                        
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error pausing playback", e)
-                    }
+                    player.pause()
+                    updatePlaybackState()
                 }
                 
                 override fun onSkipToNext() {
@@ -282,8 +189,86 @@ class AudioService : MediaBrowserServiceCompat() {
                 
                 override fun onMediaButtonEvent(mediaButtonEvent: Intent): Boolean {
                     Log.d(TAG, "MediaSessionCompat.Callback - onMediaButtonEvent(): ${mediaButtonEvent.action}")
-                    // Let the superclass handle it, which will decode the KeyEvent and call the appropriate method
-                    return super.onMediaButtonEvent(mediaButtonEvent)
+                    
+                    // Extract KeyEvent from the intent
+                    val keyEvent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        mediaButtonEvent.getParcelableExtra(Intent.EXTRA_KEY_EVENT, android.view.KeyEvent::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        mediaButtonEvent.getParcelableExtra(Intent.EXTRA_KEY_EVENT)
+                    }
+                    
+                    if (keyEvent != null) {
+                        Log.d(TAG, "MediaButton KeyEvent: action=${keyEvent.action}, keyCode=${keyEvent.keyCode}")
+                        
+                        // Only process key down events to avoid duplicate triggers
+                        if (keyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
+                            when (keyEvent.keyCode) {
+                                android.view.KeyEvent.KEYCODE_MEDIA_PLAY -> {
+                                    Log.d(TAG, "Media button: PLAY")
+                                    if (!player.isPlaying) {
+                                        player.play()
+                                        updateMediaSessionState()
+                                        updateNotificationState()
+                                        return true
+                                    }
+                                }
+                                android.view.KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+                                    Log.d(TAG, "Media button: PAUSE")
+                                    if (player.isPlaying) {
+                                        player.pause()
+                                        updateMediaSessionState()
+                                        updateNotificationState()
+                                        return true
+                                    }
+                                }
+                                android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                                    Log.d(TAG, "Media button: PLAY_PAUSE")
+                                    val wasPlaying = player.isPlaying
+                                    Log.d(TAG, "Current playing state: $wasPlaying")
+                                    
+                                    if (wasPlaying) {
+                                        player.pause()
+                                    } else {
+                                        player.play()
+                                    }
+                                    
+                                    // Log the state change
+                                    Log.d(TAG, "After toggle - isPlaying: ${player.isPlaying}, wasPlaying: $wasPlaying")
+                                    
+                                    updateMediaSessionState()
+                                    updateNotificationState()
+                                    return true
+                                }
+                                android.view.KeyEvent.KEYCODE_MEDIA_NEXT -> {
+                                    Log.d(TAG, "Media button: NEXT")
+                                    player.seekToNextMediaItem()
+                                    updateMediaSessionState()
+                                    updateNotificationState()
+                                    return true
+                                }
+                                android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
+                                    Log.d(TAG, "Media button: PREVIOUS")
+                                    player.seekToPreviousMediaItem()
+                                    updateMediaSessionState()
+                                    updateNotificationState()
+                                    return true
+                                }
+                                android.view.KeyEvent.KEYCODE_MEDIA_STOP -> {
+                                    Log.d(TAG, "Media button: STOP")
+                                    player.stop()
+                                    updateMediaSessionState()
+                                    updateNotificationState()
+                                    return true
+                                }
+                            }
+                        }
+                    }
+                    
+                    // If we didn't handle it, let the superclass try
+                    val result = super.onMediaButtonEvent(mediaButtonEvent)
+                    Log.d(TAG, "Super.onMediaButtonEvent result: $result")
+                    return result
                 }
             })
             
@@ -292,7 +277,11 @@ class AudioService : MediaBrowserServiceCompat() {
         }
         
         // Start the session
+        // Ensure MediaSessionCompat is active
         mediaSessionCompat?.isActive = true
+        
+        // Set the token from MediaSessionCompat to the MediaBrowserServiceCompat
+        sessionToken = mediaSessionCompat?.sessionToken
 
         // Update notification and media session state
         player.addListener(object : Player.Listener {
@@ -361,11 +350,11 @@ class AudioService : MediaBrowserServiceCompat() {
               "isPlaying=${player.isPlaying}, " +
               "playbackState=${playbackStateToString(player.playbackState)}")
         
-        // Map ExoPlayer state to PlaybackStateCompat
+        // Map ExoPlayer state to PlaybackStateCompat more precisely
+        // Only use isPlaying as the primary state indicator for more consistent behavior
         val state = when {
             player.playbackState == Player.STATE_BUFFERING -> PlaybackStateCompat.STATE_BUFFERING
             player.isPlaying -> PlaybackStateCompat.STATE_PLAYING
-            player.playWhenReady && player.playbackState == Player.STATE_READY -> PlaybackStateCompat.STATE_PLAYING
             player.playbackState == Player.STATE_ENDED -> PlaybackStateCompat.STATE_STOPPED
             player.playbackState == Player.STATE_IDLE -> PlaybackStateCompat.STATE_NONE
             else -> PlaybackStateCompat.STATE_PAUSED
@@ -374,7 +363,7 @@ class AudioService : MediaBrowserServiceCompat() {
         // Log the mapped state
         Log.d(TAG, "Mapped to PlaybackStateCompat: ${playbackStateCompatToString(state)}")
         
-        // Define available actions
+        // Define available actions - always include all actions for consistent behavior
         val actions = PlaybackStateCompat.ACTION_PLAY or
                 PlaybackStateCompat.ACTION_PAUSE or
                 PlaybackStateCompat.ACTION_PLAY_PAUSE or
@@ -389,7 +378,17 @@ class AudioService : MediaBrowserServiceCompat() {
             .setActions(actions)
             .build()
         
+        // Update MediaSessionCompat state
         mediaSessionCompat?.setPlaybackState(playbackState)
+        
+        // Also sync the Media3 session player state
+        if (state == PlaybackStateCompat.STATE_PLAYING && !player.playWhenReady) {
+            Log.d(TAG, "Fixing inconsistent playWhenReady value")
+            player.playWhenReady = true
+        } else if (state == PlaybackStateCompat.STATE_PAUSED && player.playWhenReady) {
+            Log.d(TAG, "Fixing inconsistent playWhenReady value")
+            player.playWhenReady = false
+        }
     }
     
     // Helper method to convert ExoPlayer state to string for debugging
@@ -787,7 +786,7 @@ class AudioService : MediaBrowserServiceCompat() {
         // Add previous action
         builder.addAction(
             NotificationCompat.Action(
-                R.drawable.ic_play, 
+                R.drawable.ic_notification, 
                 "Previous",
                 MediaButtonReceiver.buildMediaButtonPendingIntent(
                     this, 
@@ -799,7 +798,7 @@ class AudioService : MediaBrowserServiceCompat() {
         // Add next action
         builder.addAction(
             NotificationCompat.Action(
-                R.drawable.ic_play, 
+                R.drawable.ic_notification, 
                 "Next",
                 MediaButtonReceiver.buildMediaButtonPendingIntent(
                     this, 
@@ -824,86 +823,85 @@ class AudioService : MediaBrowserServiceCompat() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d(TAG, "onStartCommand: intent=${intent?.action}")
         
-        // Check for explicit metadata sent from ViewModel
-        val trackTitle = intent?.getStringExtra("EXTRA_TRACK_TITLE")
-        val speakerName = intent?.getStringExtra("EXTRA_SPEAKER_NAME")
-        val artworkUri = intent?.getStringExtra("EXTRA_ARTWORK_URI")
-        
-        if (trackTitle != null && speakerName != null) {
-            Log.d(TAG, "Received explicit metadata in intent:")
-            Log.d(TAG, "  Title: $trackTitle")
-            Log.d(TAG, "  Artist: $speakerName")
-            Log.d(TAG, "  Artwork URI: $artworkUri")
-            
-            // Force metadata update using these values
-            forceUpdateMetadata(trackTitle, speakerName, artworkUri)
-        }
-        
-        // Handle media button events from MediaButtonReceiver
+        // Handle media button events first
         MediaButtonReceiver.handleIntent(mediaSessionCompat, intent)
         
-        // Handle custom actions
         when (intent?.action) {
-            "ACTION_PLAY" -> {
-                Log.d(TAG, "Handling ACTION_PLAY")
-                if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) {
+            ACTION_PLAY_FROM_START -> {
+                Log.d(TAG, "Handling ACTION_PLAY_FROM_START")
+                // Reset position to start of current track
+                player.seekTo(player.currentMediaItemIndex, 0)
+                player.prepare()
+                player.play()
+                updatePlaybackState()
+            }
+            
+            ACTION_RESUME_PLAYBACK -> {
+                Log.d(TAG, "Handling ACTION_RESUME_PLAYBACK")
+                if (player.playbackState == Player.STATE_IDLE) {
                     player.prepare()
                 }
                 player.play()
-                
-                // When starting playback, ensure we have updated metadata
-                updateMediaMetadata()
-                updateMediaSessionState()
-                updateNotificationState()
-                
-                // Log current metadata for debugging
-                val currentItem = player.currentMediaItem
-                if (currentItem != null) {
-                    Log.d(TAG, "ACTION_PLAY with metadata:")
-                    Log.d(TAG, "  Title: ${currentItem.mediaMetadata.title}")
-                    Log.d(TAG, "  Artist: ${currentItem.mediaMetadata.artist}")
-                    Log.d(TAG, "  Album: ${currentItem.mediaMetadata.albumTitle}")
-                }
+                updatePlaybackState()
             }
+            
             "ACTION_PAUSE" -> {
-                Log.d(TAG, "Handling ACTION_PAUSE")
+                Log.d(TAG, "Handling ACTION_PAUSE") 
                 player.pause()
-                updateMediaSessionState()
-                updateNotificationState()
+                updatePlaybackState()
             }
+            
+            // Check for explicit metadata sent from ViewModel
+            val trackTitle = intent?.getStringExtra("EXTRA_TRACK_TITLE")
+            val speakerName = intent?.getStringExtra("EXTRA_SPEAKER_NAME")
+            val artworkUri = intent?.getStringExtra("EXTRA_ARTWORK_URI")
+            
+            if (trackTitle != null && speakerName != null) {
+                Log.d(TAG, "Received explicit metadata in intent:")
+                Log.d(TAG, "  Title: $trackTitle")
+                Log.d(TAG, "  Artist: $speakerName")
+                Log.d(TAG, "  Artwork URI: $artworkUri")
+                
+                // Force metadata update using these values
+                forceUpdateMetadata(trackTitle, speakerName, artworkUri)
+            }
+            
             "ACTION_SKIP_FORWARD" -> {
                 Log.d(TAG, "Handling ACTION_SKIP_FORWARD")
                 val newPosition = player.currentPosition + 10000
                 player.seekTo(newPosition)
-                updateMediaSessionState()
-                updateNotificationState()
+                updatePlaybackState()
             }
             "ACTION_SKIP_BACKWARD" -> {
                 Log.d(TAG, "Handling ACTION_SKIP_BACKWARD")
                 val newPosition = (player.currentPosition - 10000).coerceAtLeast(0)
                 player.seekTo(newPosition)
-                updateMediaSessionState()
-                updateNotificationState()
+                updatePlaybackState()
             }
             "ACTION_NEXT" -> {
                 Log.d(TAG, "Handling ACTION_NEXT")
                 player.seekToNextMediaItem()
-                updateMediaSessionState()
-                updateNotificationState()
+                updatePlaybackState()
             }
             "ACTION_PREVIOUS" -> {
                 Log.d(TAG, "Handling ACTION_PREVIOUS")
                 player.seekToPreviousMediaItem()
-                updateMediaSessionState()
-                updateNotificationState()
-            }
-            Intent.ACTION_MEDIA_BUTTON -> {
-                Log.d(TAG, "Handling ACTION_MEDIA_BUTTON")
-                // This is handled by MediaButtonReceiver.handleIntent above
+                updatePlaybackState()
             }
         }
         
-        return START_STICKY // Ensure the service stays running
+        return START_STICKY
+    }
+
+    // Consolidate state updates into one method
+    private fun updatePlaybackState() {
+        updateMediaSessionState()
+        updateNotificationState()
+        
+        // Broadcast state change
+        val intent = Intent("ACTION_PLAYBACK_STATE_CHANGED")
+        intent.putExtra("IS_PLAYING", player.isPlaying)
+        sendBroadcast(intent)
     }
 
     override fun onDestroy() {

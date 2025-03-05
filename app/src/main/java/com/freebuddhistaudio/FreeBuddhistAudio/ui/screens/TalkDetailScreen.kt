@@ -381,7 +381,9 @@ fun TalkDetailScreen(
                                 track = track,
                                 trackIndex = index,
                                 isPlaying = isCurrentTrack && playbackState.isPlaying,
-                                onClick = { viewModel.playTrack(index) }
+                                onClick = { 
+                                    viewModel.playTalkFromStart(talk, index)
+                                }
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                         }

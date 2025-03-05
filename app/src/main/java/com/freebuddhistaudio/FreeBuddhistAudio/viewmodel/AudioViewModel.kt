@@ -297,32 +297,33 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun playTalkFromStart(talk: Talk, startTrackIndex: Int = 0) {
+        setCurrentTalk(talk)
+        startAudioService()
+        
+        // Send command to service
+        val context = getApplication<Application>().applicationContext
+        val intent = Intent(context, Class.forName("com.freebuddhistaudio.FreeBuddhistAudio.playback.AudioService"))
+        intent.action = "ACTION_PLAY_FROM_START"
+        context.startService(intent)
+    }
+
+    fun resumePlayback() {
+        startAudioService()
+        
+        val context = getApplication<Application>().applicationContext
+        val intent = Intent(context, Class.forName("com.freebuddhistaudio.FreeBuddhistAudio.playback.AudioService"))
+        intent.action = "ACTION_RESUME_PLAYBACK"
+        context.startService(intent)
+    }
+
     fun togglePlayPause() {
-        player?.let {
-            // Start the service first to ensure it's running
-            startAudioService()
-            
-            val context = getApplication<Application>().applicationContext
-            val intent = Intent(context, Class.forName("com.freebuddhistaudio.FreeBuddhistAudio.playback.AudioService"))
-            
-            if (it.isPlaying) {
-                // Send pause command to the service
-                intent.action = "ACTION_PAUSE"
-                context.startService(intent)
-                
-                it.pause()
-                _playbackState.value = _playbackState.value.copy(isPlaying = false)
-            } else {
-                // Send play command to the service
-                intent.action = "ACTION_PLAY"
-                context.startService(intent)
-                
-                it.play()
-                _playbackState.value = _playbackState.value.copy(isPlaying = true)
-            }
-            
-            // Update all aspects of playback state for consistency
-            updatePlaybackState()
+        val isPlaying = _playbackState.value.isPlaying
+        
+        if (isPlaying) {
+            pausePlayback()
+        } else {
+            resumePlayback()
         }
     }
     
