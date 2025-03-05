@@ -161,33 +161,106 @@ fun TalkDetailScreen(
                         }
                     }
                 }
-                // Player Controls (fixed)
-                Row(
+                // Enhanced Player Controls for Android Auto - large and prominent
+                Card(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 16.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    ),
+                    elevation = CardDefaults.cardElevation(
+                        defaultElevation = 4.dp
+                    )
                 ) {
-                    IconButton(onClick = { viewModel.skipToPreviousTrack() }) {
-                        Icon(Icons.Default.SkipPrevious, "Previous Track")
-                    }
-                    IconButton(onClick = { viewModel.seekBackward() }) {
-                        Icon(Icons.Default.Replay10, "Skip Back 10 Seconds")
-                    }
-                    FilledIconButton(
-                        onClick = { viewModel.togglePlayPause() }
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Icon(
-                            if (playbackState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            "Play/Pause"
-                        )
-                    }
-                    IconButton(onClick = { viewModel.seekForward() }) {
-                        Icon(Icons.Default.Forward10, "Skip Forward 10 Seconds")
-                    }
-                    IconButton(onClick = { viewModel.skipToNextTrack() }) {
-                        Icon(Icons.Default.SkipNext, "Next Track")
+                        // Track info
+                        playbackState.currentTrack?.let { track ->
+                            Text(
+                                text = track.title.ifEmpty { "Track ${playbackState.currentTrackIndex + 1}" },
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                        }
+                        
+                        // Main controls row
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 16.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Previous track - larger
+                            FilledTonalIconButton(
+                                onClick = { viewModel.skipToPreviousTrack() },
+                                modifier = Modifier.size(56.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.SkipPrevious, 
+                                    contentDescription = "Previous Track",
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            }
+                            
+                            // Skip backward 10s - larger
+                            FilledTonalIconButton(
+                                onClick = { viewModel.seekBackward() },
+                                modifier = Modifier.size(56.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Replay10, 
+                                    contentDescription = "Skip Back 10 Seconds",
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            }
+                            
+                            // Play/Pause - extra large and prominent
+                            FilledIconButton(
+                                onClick = { viewModel.togglePlayPause() },
+                                modifier = Modifier.size(72.dp),
+                                colors = IconButtonDefaults.filledIconButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary
+                                )
+                            ) {
+                                Icon(
+                                    if (playbackState.isPlaying) Icons.Default.Pause 
+                                    else Icons.Default.PlayArrow,
+                                    contentDescription = "Play/Pause",
+                                    modifier = Modifier.size(48.dp),
+                                    tint = MaterialTheme.colorScheme.onPrimary
+                                )
+                            }
+                            
+                            // Skip forward 10s - larger
+                            FilledTonalIconButton(
+                                onClick = { viewModel.seekForward() },
+                                modifier = Modifier.size(56.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Forward10, 
+                                    contentDescription = "Skip Forward 10 Seconds",
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            }
+                            
+                            // Next track - larger
+                            FilledTonalIconButton(
+                                onClick = { viewModel.skipToNextTrack() },
+                                modifier = Modifier.size(56.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.SkipNext, 
+                                    contentDescription = "Next Track",
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
