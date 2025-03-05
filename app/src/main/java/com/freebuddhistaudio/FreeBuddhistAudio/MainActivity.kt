@@ -276,7 +276,8 @@ class MainActivity : ComponentActivity() {
         
         // Register the broadcast receiver for playback state changes
         val filter = IntentFilter("ACTION_PLAYBACK_STATE_CHANGED")
-        registerReceiver(playbackStateReceiver, filter)
+        // Fix for Android 12+ security requirement: specify receiver is not exported
+        registerReceiver(playbackStateReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
         Log.d(TAG, "Registered playback state broadcast receiver")
     }
     

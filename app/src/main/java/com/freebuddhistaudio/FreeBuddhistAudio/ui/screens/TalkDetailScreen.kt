@@ -52,7 +52,7 @@ fun TalkDetailScreen(
     val downloadError by viewModel.downloadError.collectAsState()
     val isInAutoMode by viewModel.isInAutoMode.collectAsState()
     
-    // Log to verify auto mode state
+    // Log to verify auto mode state and force a refresh if needed
     LaunchedEffect(isInAutoMode) {
         android.util.Log.d("TalkDetailScreen", "isInAutoMode: $isInAutoMode")
     }
