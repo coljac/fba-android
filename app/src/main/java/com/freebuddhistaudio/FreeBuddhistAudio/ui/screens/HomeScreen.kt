@@ -1,6 +1,8 @@
 package com.freebuddhistaudio.FreeBuddhistAudio.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -56,16 +58,17 @@ fun HomeScreen(
             // Create a coroutine scope that follows the lifecycle of this composable
             val scope = rememberCoroutineScope()
             
-            // Debug button to toggle auto mode (only in debug builds)
+            // Hidden debug shortcut (triple tap on the top right corner)
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(top = 80.dp, end = 8.dp) // Position below the top app bar
-            ) {
-                FilledTonalButton(onClick = { viewModel.toggleAutoMode() }) {
-                    Text(if (isInAutoMode) "Auto Mode: ON" else "Auto Mode: OFF")
-                }
-            }
+                    .size(48.dp)
+                    .padding(top = 8.dp, end = 8.dp)
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { viewModel.toggleAutoMode() }
+            )
             
             SwipeRefresh(
                 state = rememberSwipeRefreshState(isRefreshing),
@@ -202,61 +205,9 @@ fun HomeScreen(
                                     }
                                 }
                             } else {
-                                // Minimal now playing bar for phone UI
-                                Card(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                                    )
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        // Now Playing text and track info
-                                        Column(
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .padding(horizontal = 8.dp)
-                                        ) {
-                                            Text(
-                                                text = "Now Playing",
-                                                style = MaterialTheme.typography.labelMedium
-                                            )
-                                            currentTalk?.let { talk ->
-                                                Text(
-                                                    text = talk.title,
-                                                    style = MaterialTheme.typography.bodyMedium
-                                                )
-                                            }
-                                        }
-                                        
-                                        // Simple player controls
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            IconButton(onClick = { viewModel.skipToPreviousTrack() }) {
-                                                Icon(Icons.Default.SkipPrevious, "Previous")
-                                            }
-                                            FilledIconButton(
-                                                onClick = { viewModel.togglePlayPause() }
-                                            ) {
-                                                Icon(
-                                                    if (playbackState.isPlaying) Icons.Default.Pause 
-                                                    else Icons.Default.PlayArrow,
-                                                    "Play/Pause"
-                                                )
-                                            }
-                                            IconButton(onClick = { viewModel.skipToNextTrack() }) {
-                                                Icon(Icons.Default.SkipNext, "Next")
-                                            }
-                                        }
-                                    }
-                                }
+                                // No player controls in phone UI - we have the bottom bar instead
+                                // Just show a spacer to maintain consistent layout
+                                Spacer(modifier = Modifier.height(8.dp))
                             }
                         }
                     }
