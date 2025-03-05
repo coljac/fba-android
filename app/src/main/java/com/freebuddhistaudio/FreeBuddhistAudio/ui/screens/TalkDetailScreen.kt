@@ -50,6 +50,7 @@ fun TalkDetailScreen(
     val downloadProgress by viewModel.downloadProgress.collectAsState()
     val isDownloaded by viewModel.isDownloaded.collectAsState()
     val downloadError by viewModel.downloadError.collectAsState()
+    val isInAutoMode by viewModel.isInAutoMode.collectAsState()
 
     Scaffold(
         topBar = {
@@ -299,22 +300,25 @@ fun TalkDetailScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Text(
-                    text = "Description",
-                    style = MaterialTheme.typography.titleMedium
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                val descriptionScrollState = rememberScrollState()
-                Text(
-                    text = talk.blurb,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 100.dp)
-                        .verticalScroll(descriptionScrollState)
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
+                // Only show the description if not in Auto mode
+                if (!isInAutoMode) {
+                    Text(
+                        text = "Description",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    val descriptionScrollState = rememberScrollState()
+                    Text(
+                        text = talk.blurb,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 100.dp)
+                            .verticalScroll(descriptionScrollState)
+                    )
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
 
                 if (talk.tracks.isNotEmpty()) {
                     Text(

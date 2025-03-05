@@ -61,6 +61,10 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     
     private val _favoriteTalks = MutableStateFlow<List<Talk>>(emptyList())
     val favoriteTalks: StateFlow<List<Talk>> = _favoriteTalks
+    
+    // Flag to track if the app is running in Android Auto mode
+    private val _isInAutoMode = MutableStateFlow(false)
+    val isInAutoMode: StateFlow<Boolean> = _isInAutoMode
 
     data class PlaybackState(
         val isPlaying: Boolean = false,
@@ -71,9 +75,42 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     )
 
     init {
+        // Check if we're in auto mode by detecting car mode
+        checkAutoMode()
         loadDownloadedTalks()
         loadFavorites()
         loadRecentPlays()
+    }
+    
+    private fun checkAutoMode() {
+        try {
+            val context = getApplication<Application>().applicationContext
+            // Check using UiModeManager
+            val uiModeManager = context.getSystemService(android.content.Context.UI_MODE_SERVICE) as? android.app.UiModeManager
+            val isCarUiMode = uiModeManager?.currentModeType == android.content.res.Configuration.UI_MODE_TYPE_CAR
+            
+            // Also check if certain packages are available
+            val packageManager = context.packageManager
+            val carPackages = listOf(
+                "com.google.android.projection.gearhead",  // Android Auto app
+                "android.car"  // Android Automotive OS
+            )
+            
+            val isCarPackageInstalled = carPackages.any { packageName ->
+                try {
+                    packageManager.getPackageInfo(packageName, 0)
+                    true
+                } catch (e: Exception) {
+                    false
+                }
+            }
+            
+            _isInAutoMode.value = isCarUiMode || isCarPackageInstalled
+            Log.d(TAG, "Auto mode detection: isCarUiMode=$isCarUiMode, isCarPackageInstalled=$isCarPackageInstalled, result=${_isInAutoMode.value}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error detecting auto mode", e)
+            _isInAutoMode.value = false
+        }
     }
     
     private fun loadRecentPlays() {
