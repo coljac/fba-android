@@ -26,9 +26,10 @@ fun BottomPlayerBar(
 ) {
     val currentTalk by viewModel.currentTalk.collectAsState()
     val playbackState by viewModel.playbackState.collectAsState()
+    val isInAutoMode by viewModel.isInAutoMode.collectAsState()
 
-    // Don't show bottom player bar on talk detail screen
-    if (currentScreen == "TalkDetail") {
+    // Don't show bottom player bar on talk detail screen or in auto mode (we have big controls there)
+    if (currentScreen == "TalkDetail" || isInAutoMode) {
         return
     }
 
@@ -42,7 +43,7 @@ fun BottomPlayerBar(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(70.dp) // Increased height for better visibility
+                    .height(56.dp) // Standard height for phone UI
                     .padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -50,7 +51,7 @@ fun BottomPlayerBar(
                     model = talk.imageUrl,
                     contentDescription = null,
                     modifier = Modifier
-                        .size(56.dp)
+                        .size(48.dp)
                         .padding(4.dp)
                 )
                 
@@ -77,70 +78,29 @@ fun BottomPlayerBar(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Skip backward 10s
-                    IconButton(
-                        onClick = { viewModel.seekBackward() },
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Replay10, 
-                            contentDescription = "Skip Back 10 Seconds",
-                            modifier = Modifier.size(28.dp)
-                        )
-                    }
+                    // Standard size controls for phone mode
                     
                     // Previous track
-                    IconButton(
-                        onClick = { viewModel.skipToPreviousTrack() },
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.SkipPrevious, 
-                            contentDescription = "Previous Track",
-                            modifier = Modifier.size(28.dp)
-                        )
+                    IconButton(onClick = { viewModel.skipToPreviousTrack() }) {
+                        Icon(Icons.Default.SkipPrevious, "Previous Track")
                     }
                     
-                    // Play/Pause button (larger and more prominent)
+                    // Play/Pause button
                     FilledIconButton(
                         onClick = { viewModel.togglePlayPause() },
-                        modifier = Modifier.size(48.dp),
-                        shape = CircleShape,
-                        colors = IconButtonDefaults.filledIconButtonColors(
-                            containerColor = MaterialTheme.colorScheme.primary
-                        )
+                        modifier = Modifier.size(42.dp),
+                        shape = CircleShape
                     ) {
                         Icon(
                             if (playbackState.isPlaying) Icons.Default.Pause 
                             else Icons.Default.PlayArrow,
-                            contentDescription = "Play/Pause",
-                            modifier = Modifier.size(32.dp),
-                            tint = MaterialTheme.colorScheme.onPrimary
+                            contentDescription = "Play/Pause"
                         )
                     }
                     
                     // Next track
-                    IconButton(
-                        onClick = { viewModel.skipToNextTrack() },
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.SkipNext, 
-                            contentDescription = "Next Track",
-                            modifier = Modifier.size(28.dp)
-                        )
-                    }
-                    
-                    // Skip forward 10s
-                    IconButton(
-                        onClick = { viewModel.seekForward() },
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Forward10, 
-                            contentDescription = "Skip Forward 10 Seconds",
-                            modifier = Modifier.size(28.dp)
-                        )
+                    IconButton(onClick = { viewModel.skipToNextTrack() }) {
+                        Icon(Icons.Default.SkipNext, "Next Track")
                     }
                 }
             }

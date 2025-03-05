@@ -105,12 +105,37 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
             
-            _isInAutoMode.value = isCarUiMode || isCarPackageInstalled
-            Log.d(TAG, "Auto mode detection: isCarUiMode=$isCarUiMode, isCarPackageInstalled=$isCarPackageInstalled, result=${_isInAutoMode.value}")
+            // Check if a car-related intent receiver is available (more reliable for actual connections)
+            val isAutomotiveReceiverAvailable = try {
+                val intent = Intent("android.media.browse.MediaBrowserService")
+                val resolveInfo = packageManager.queryIntentServices(intent, 0)
+                resolveInfo.any { it.serviceInfo.packageName.contains("android.car") || 
+                                  it.serviceInfo.packageName.contains("gearhead") }
+            } catch (e: Exception) {
+                false
+            }
+            
+            // IMPORTANT: Auto mode should be false on phones
+            // We're getting false positives, so let's be more strict
+            _isInAutoMode.value = false // Default to false
+            
+            // Only set to true if we're very confident
+            if (isCarUiMode) {
+                // UiModeManager is the most reliable indicator
+                _isInAutoMode.value = true
+            }
+            Log.d(TAG, "Auto mode detection: isCarUiMode=$isCarUiMode, isCarPackageInstalled=$isCarPackageInstalled, " +
+                      "isAutomotiveReceiverAvailable=$isAutomotiveReceiverAvailable, result=${_isInAutoMode.value}")
         } catch (e: Exception) {
             Log.e(TAG, "Error detecting auto mode", e)
             _isInAutoMode.value = false
         }
+    }
+    
+    // For testing - allows manual toggling of auto mode
+    fun toggleAutoMode() {
+        _isInAutoMode.value = !_isInAutoMode.value
+        Log.d(TAG, "Auto mode manually toggled to: ${_isInAutoMode.value}")
     }
     
     private fun loadRecentPlays() {

@@ -51,6 +51,11 @@ fun TalkDetailScreen(
     val isDownloaded by viewModel.isDownloaded.collectAsState()
     val downloadError by viewModel.downloadError.collectAsState()
     val isInAutoMode by viewModel.isInAutoMode.collectAsState()
+    
+    // Log to verify auto mode state
+    LaunchedEffect(isInAutoMode) {
+        android.util.Log.d("TalkDetailScreen", "isInAutoMode: $isInAutoMode")
+    }
 
     Scaffold(
         topBar = {
@@ -162,105 +167,138 @@ fun TalkDetailScreen(
                         }
                     }
                 }
-                // Enhanced Player Controls for Android Auto - large and prominent
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 16.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    ),
-                    elevation = CardDefaults.cardElevation(
-                        defaultElevation = 4.dp
-                    )
-                ) {
-                    Column(
+                // Player controls - different styles for auto and phone mode
+                if (isInAutoMode) {
+                    // Enhanced Player Controls for Android Auto - large and prominent
+                    Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                            .padding(vertical = 16.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        ),
+                        elevation = CardDefaults.cardElevation(
+                            defaultElevation = 4.dp
+                        )
                     ) {
-                        // Track info
-                        playbackState.currentTrack?.let { track ->
-                            Text(
-                                text = track.title.ifEmpty { "Track ${playbackState.currentTrackIndex + 1}" },
-                                style = MaterialTheme.typography.titleMedium,
-                                modifier = Modifier.padding(bottom = 8.dp)
-                            )
-                        }
-                        
-                        // Main controls row
-                        Row(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 16.dp),
-                            horizontalArrangement = Arrangement.SpaceEvenly,
-                            verticalAlignment = Alignment.CenterVertically
+                                .padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            // Previous track - larger
-                            FilledTonalIconButton(
-                                onClick = { viewModel.skipToPreviousTrack() },
-                                modifier = Modifier.size(56.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.SkipPrevious, 
-                                    contentDescription = "Previous Track",
-                                    modifier = Modifier.size(32.dp)
+                            // Track info
+                            playbackState.currentTrack?.let { track ->
+                                Text(
+                                    text = track.title.ifEmpty { "Track ${playbackState.currentTrackIndex + 1}" },
+                                    style = MaterialTheme.typography.titleMedium,
+                                    modifier = Modifier.padding(bottom = 8.dp)
                                 )
                             }
                             
-                            // Skip backward 10s - larger
-                            FilledTonalIconButton(
-                                onClick = { viewModel.seekBackward() },
-                                modifier = Modifier.size(56.dp)
+                            // Main controls row - LARGE for Auto
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 16.dp),
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    Icons.Default.Replay10, 
-                                    contentDescription = "Skip Back 10 Seconds",
-                                    modifier = Modifier.size(32.dp)
-                                )
+                                // Previous track - larger
+                                FilledTonalIconButton(
+                                    onClick = { viewModel.skipToPreviousTrack() },
+                                    modifier = Modifier.size(56.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.SkipPrevious, 
+                                        contentDescription = "Previous Track",
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                }
+                                
+                                // Skip backward 10s - larger
+                                FilledTonalIconButton(
+                                    onClick = { viewModel.seekBackward() },
+                                    modifier = Modifier.size(56.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Replay10, 
+                                        contentDescription = "Skip Back 10 Seconds",
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                }
+                                
+                                // Play/Pause - extra large and prominent
+                                FilledIconButton(
+                                    onClick = { viewModel.togglePlayPause() },
+                                    modifier = Modifier.size(72.dp),
+                                    colors = IconButtonDefaults.filledIconButtonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary
+                                    )
+                                ) {
+                                    Icon(
+                                        if (playbackState.isPlaying) Icons.Default.Pause 
+                                        else Icons.Default.PlayArrow,
+                                        contentDescription = "Play/Pause",
+                                        modifier = Modifier.size(48.dp),
+                                        tint = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                }
+                                
+                                // Skip forward 10s - larger
+                                FilledTonalIconButton(
+                                    onClick = { viewModel.seekForward() },
+                                    modifier = Modifier.size(56.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Forward10, 
+                                        contentDescription = "Skip Forward 10 Seconds",
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                }
+                                
+                                // Next track - larger
+                                FilledTonalIconButton(
+                                    onClick = { viewModel.skipToNextTrack() },
+                                    modifier = Modifier.size(56.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.SkipNext, 
+                                        contentDescription = "Next Track",
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                }
                             }
-                            
-                            // Play/Pause - extra large and prominent
-                            FilledIconButton(
-                                onClick = { viewModel.togglePlayPause() },
-                                modifier = Modifier.size(72.dp),
-                                colors = IconButtonDefaults.filledIconButtonColors(
-                                    containerColor = MaterialTheme.colorScheme.primary
-                                )
-                            ) {
-                                Icon(
-                                    if (playbackState.isPlaying) Icons.Default.Pause 
-                                    else Icons.Default.PlayArrow,
-                                    contentDescription = "Play/Pause",
-                                    modifier = Modifier.size(48.dp),
-                                    tint = MaterialTheme.colorScheme.onPrimary
-                                )
-                            }
-                            
-                            // Skip forward 10s - larger
-                            FilledTonalIconButton(
-                                onClick = { viewModel.seekForward() },
-                                modifier = Modifier.size(56.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.Forward10, 
-                                    contentDescription = "Skip Forward 10 Seconds",
-                                    modifier = Modifier.size(32.dp)
-                                )
-                            }
-                            
-                            // Next track - larger
-                            FilledTonalIconButton(
-                                onClick = { viewModel.skipToNextTrack() },
-                                modifier = Modifier.size(56.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.SkipNext, 
-                                    contentDescription = "Next Track",
-                                    modifier = Modifier.size(32.dp)
-                                )
-                            }
+                        }
+                    }
+                } else {
+                    // Regular size controls for phone mode
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = { viewModel.skipToPreviousTrack() }) {
+                            Icon(Icons.Default.SkipPrevious, "Previous Track")
+                        }
+                        IconButton(onClick = { viewModel.seekBackward() }) {
+                            Icon(Icons.Default.Replay10, "Skip Back 10 Seconds")
+                        }
+                        FilledIconButton(
+                            onClick = { viewModel.togglePlayPause() }
+                        ) {
+                            Icon(
+                                if (playbackState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                "Play/Pause"
+                            )
+                        }
+                        IconButton(onClick = { viewModel.seekForward() }) {
+                            Icon(Icons.Default.Forward10, "Skip Forward 10 Seconds")
+                        }
+                        IconButton(onClick = { viewModel.skipToNextTrack() }) {
+                            Icon(Icons.Default.SkipNext, "Next Track")
                         }
                     }
                 }
@@ -300,7 +338,7 @@ fun TalkDetailScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Only show the description if not in Auto mode
+                // Only show description in phone mode
                 if (!isInAutoMode) {
                     Text(
                         text = "Description",
