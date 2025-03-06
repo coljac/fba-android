@@ -656,6 +656,45 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
     
+    /**
+     * Method to synchronize track changes from the service (via broadcast)
+     * This allows Bluetooth and lock screen controls to correctly sync the track with the UI
+     */
+    fun syncTrackChange(trackIndex: Int, isPlaying: Boolean) {
+        Log.d(TAG, "Syncing external track change: index=$trackIndex, isPlaying=$isPlaying")
+        
+        // Update local player state if there's a mismatch with the current track
+        player?.let { exoPlayer ->
+            val currentTrack = _currentTalk.value?.let { talk ->
+                if (trackIndex >= 0 && trackIndex < talk.tracks.size) talk.tracks[trackIndex] else null
+            }
+            
+            try {
+                // Only change track if we need to
+                if (exoPlayer.currentMediaItemIndex != trackIndex) {
+                    Log.d(TAG, "Seeking to track $trackIndex (current is ${exoPlayer.currentMediaItemIndex})")
+                    exoPlayer.seekTo(trackIndex, 0)
+                }
+                
+                // Update playback state
+                _playbackState.value = _playbackState.value.copy(
+                    isPlaying = isPlaying,
+                    currentTrackIndex = trackIndex,
+                    currentTrack = currentTrack
+                )
+                
+                // Sync play state
+                if (isPlaying != exoPlayer.isPlaying) {
+                    syncPlaybackState(isPlaying)
+                }
+                
+                Log.d(TAG, "Successfully synced track change")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error syncing track change", e)
+            }
+        }
+    }
+    
     // Helper to convert player state to string for logging
     private fun playbackStateToString(state: Int): String {
         return when (state) {

@@ -55,13 +55,24 @@ class MainActivity : ComponentActivity() {
     private var mediaBrowser: MediaBrowserCompat? = null
     private var mediaController: MediaControllerCompat? = null
     
-    // Playback state broadcast receiver
-    private val playbackStateReceiver = object : BroadcastReceiver() {
+    // Playback state and track change broadcast receiver
+    private val mediaReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action == "ACTION_PLAYBACK_STATE_CHANGED") {
-                val isPlaying = intent.getBooleanExtra("IS_PLAYING", false)
-                Log.d(TAG, "Received broadcast: playback state changed to isPlaying=$isPlaying")
-                viewModel.syncPlaybackState(isPlaying)
+            when (intent.action) {
+                "ACTION_PLAYBACK_STATE_CHANGED" -> {
+                    val isPlaying = intent.getBooleanExtra("IS_PLAYING", false)
+                    Log.d(TAG, "Received broadcast: playback state changed to isPlaying=$isPlaying")
+                    viewModel.syncPlaybackState(isPlaying)
+                }
+                "ACTION_TRACK_CHANGED" -> {
+                    val trackIndex = intent.getIntExtra("TRACK_INDEX", 0)
+                    val trackTitle = intent.getStringExtra("TRACK_TITLE") ?: ""
+                    val isPlaying = intent.getBooleanExtra("IS_PLAYING", false)
+                    Log.d(TAG, "Received broadcast: track changed to index=$trackIndex, title=$trackTitle")
+                    
+                    // Update playback state and track info
+                    viewModel.syncTrackChange(trackIndex, isPlaying)
+                }
             }
         }
     }
@@ -274,10 +285,13 @@ class MainActivity : ComponentActivity() {
             initializeMediaBrowserCompatConnection()
         }
         
-        // Register the broadcast receiver for playback state changes
-        val filter = IntentFilter("ACTION_PLAYBACK_STATE_CHANGED")
-        registerReceiver(playbackStateReceiver, filter)
-        Log.d(TAG, "Registered playback state broadcast receiver")
+        // Register the broadcast receiver for media playback events
+        val filter = IntentFilter().apply {
+            addAction("ACTION_PLAYBACK_STATE_CHANGED")
+            addAction("ACTION_TRACK_CHANGED")
+        }
+        registerReceiver(mediaReceiver, filter)
+        Log.d(TAG, "Registered media broadcast receiver")
     }
     
     override fun onStop() {
@@ -298,8 +312,8 @@ class MainActivity : ComponentActivity() {
         
         // Unregister the broadcast receiver
         try {
-            unregisterReceiver(playbackStateReceiver)
-            Log.d(TAG, "Unregistered playback state broadcast receiver")
+            unregisterReceiver(mediaReceiver)
+            Log.d(TAG, "Unregistered media broadcast receiver")
         } catch (e: Exception) {
             Log.e(TAG, "Error unregistering receiver", e)
         }
