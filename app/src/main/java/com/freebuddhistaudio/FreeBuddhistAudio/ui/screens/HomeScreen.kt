@@ -38,7 +38,7 @@ fun HomeScreen(
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("Free Buddhiss Audio") },
+                title = { Text("Free Buddhist Audio") },
                 actions = {
                     IconButton(onClick = onNavigateToSearch) {
                         Icon(Icons.Default.Search, contentDescription = "Search")
@@ -72,119 +72,6 @@ fun HomeScreen(
                         .fillMaxSize()
                         .padding(padding)
                 ) {
-                    // Add prominent player control card if there's a current talk
-                    if (currentTalk != null) {
-                        item {
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                                ),
-                                elevation = CardDefaults.cardElevation(
-                                    defaultElevation = 4.dp
-                                ),
-                                shape = RoundedCornerShape(16.dp)
-                            ) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    // Track info
-                                    currentTalk?.let { talk ->
-                                        Text(
-                                            text = talk.title,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            modifier = Modifier.padding(bottom = 8.dp)
-                                        )
-                                        
-                                        playbackState.currentTrack?.let { track ->
-                                            Text(
-                                                text = track.title.ifEmpty { "Track ${playbackState.currentTrackIndex + 1}" },
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                modifier = Modifier.padding(bottom = 16.dp)
-                                            )
-                                        }
-                                    }
-                                    
-                                    // Main controls row
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceEvenly,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        // Previous track
-                                        FilledTonalIconButton(
-                                            onClick = { viewModel.skipToPreviousTrack() },
-                                            modifier = Modifier.size(56.dp)
-                                        ) {
-                                            Icon(
-                                                Icons.Default.SkipPrevious, 
-                                                contentDescription = "Previous Track",
-                                                modifier = Modifier.size(32.dp)
-                                            )
-                                        }
-                                        
-                                        // Skip backward 10s
-                                        FilledTonalIconButton(
-                                            onClick = { viewModel.seekBackward() },
-                                            modifier = Modifier.size(56.dp)
-                                        ) {
-                                            Icon(
-                                                Icons.Default.Replay10, 
-                                                contentDescription = "Skip Back 10 Seconds",
-                                                modifier = Modifier.size(32.dp)
-                                            )
-                                        }
-                                        
-                                        // Play/Pause - extra large and prominent
-                                        FilledIconButton(
-                                            onClick = { viewModel.togglePlayPause() },
-                                            modifier = Modifier.size(72.dp),
-                                            colors = IconButtonDefaults.filledIconButtonColors(
-                                                containerColor = MaterialTheme.colorScheme.primary
-                                            )
-                                        ) {
-                                            Icon(
-                                                if (playbackState.isPlaying) Icons.Default.Pause 
-                                                else Icons.Default.PlayArrow,
-                                                contentDescription = "Play/Pause",
-                                                modifier = Modifier.size(48.dp),
-                                                tint = MaterialTheme.colorScheme.onPrimary
-                                            )
-                                        }
-                                        
-                                        // Skip forward 10s
-                                        FilledTonalIconButton(
-                                            onClick = { viewModel.seekForward() },
-                                            modifier = Modifier.size(56.dp)
-                                        ) {
-                                            Icon(
-                                                Icons.Default.Forward10, 
-                                                contentDescription = "Skip Forward 10 Seconds",
-                                                modifier = Modifier.size(32.dp)
-                                            )
-                                        }
-                                        
-                                        // Next track
-                                        FilledTonalIconButton(
-                                            onClick = { viewModel.skipToNextTrack() },
-                                            modifier = Modifier.size(56.dp)
-                                        ) {
-                                            Icon(
-                                                Icons.Default.SkipNext, 
-                                                contentDescription = "Next Track",
-                                                modifier = Modifier.size(32.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
             
                     if (recentPlays.isNotEmpty()) {
                         item {

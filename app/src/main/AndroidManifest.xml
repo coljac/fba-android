@@ -69,6 +69,19 @@
             <intent-filter>
                 <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
             </intent-filter>
+            <!-- Additional media button intent filters for Bluetooth compatibility -->
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+            <!-- Custom actions for our app -->
+            <intent-filter>
+                <action android:name="ACTION_PLAY" />
+                <action android:name="ACTION_PAUSE" />
+                <action android:name="ACTION_NEXT" />
+                <action android:name="ACTION_PREVIOUS" />
+                <action android:name="ACTION_SKIP_FORWARD" />
+                <action android:name="ACTION_SKIP_BACKWARD" />
+            </intent-filter>
         </service>
         
         <!-- Media Button Receiver for handling media control buttons -->

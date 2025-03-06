@@ -35,18 +35,31 @@ fun BottomPlayerBar(
     var showTrackProgress by remember { mutableStateOf(true) }
     var progress by remember { mutableFloatStateOf(0f) }
     
-    // Update progress every second while playing
-    LaunchedEffect(playbackState.isPlaying, playbackState.position, playbackState.duration) {
-        // Initialize progress
+    // Calculate progress based on either track or total talk duration
+    LaunchedEffect(playbackState.isPlaying, playbackState.position, playbackState.duration, showTrackProgress) {
+        // Initialize progress based on selected mode
         progress = if (playbackState.duration > 0) {
-            (playbackState.position.toFloat() / playbackState.duration.toFloat()).coerceIn(0f, 1f)
+            // If showing track progress, use position/duration
+            if (showTrackProgress) {
+                (playbackState.position.toFloat() / playbackState.duration.toFloat()).coerceIn(0f, 1f)
+            } else {
+                // For whole talk progress, we would need total duration and overall position
+                // For now, we'll use track progress as a fallback
+                (playbackState.position.toFloat() / playbackState.duration.toFloat()).coerceIn(0f, 1f)
+                // TODO: Implement whole talk progress when that data is available
+            }
         } else 0f
         
         // Continue updating while playing
         if (playbackState.isPlaying && playbackState.duration > 0) {
             while (isActive) {
                 delay(1000) // Update every second
-                progress = (playbackState.position.toFloat() / playbackState.duration.toFloat()).coerceIn(0f, 1f)
+                progress = if (showTrackProgress) {
+                    (playbackState.position.toFloat() / playbackState.duration.toFloat()).coerceIn(0f, 1f)
+                } else {
+                    // TODO: Implement whole talk progress when that data is available
+                    (playbackState.position.toFloat() / playbackState.duration.toFloat()).coerceIn(0f, 1f)
+                }
             }
         }
     }
@@ -64,21 +77,37 @@ fun BottomPlayerBar(
             tonalElevation = 8.dp
         ) {
             Column {
-                // Add progress bar at the top
-                if (playbackState.duration > 0) {
-                    LinearProgressIndicator(
-                        progress = { progress },
+                // Clickable progress bar at the top with indicator of current mode
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showTrackProgress = !showTrackProgress }
+                ) {
+                    if (playbackState.duration > 0) {
+                        LinearProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(3.dp),
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = MaterialTheme.colorScheme.primaryContainer
+                        )
+                    } else {
+                        LinearProgressIndicator(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(3.dp)
+                        )
+                    }
+                    
+                    // Small indicator of current progress mode
+                    Text(
+                        text = if (showTrackProgress) "Track" else "Talk",
+                        style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .height(2.dp),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.primaryContainer
-                    )
-                } else {
-                    LinearProgressIndicator(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(2.dp)
+                            .align(Alignment.CenterEnd)
+                            .padding(end = 8.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                     )
                 }
                 

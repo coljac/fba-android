@@ -517,10 +517,11 @@ class AudioService : MediaBrowserServiceCompat() {
               "isPlaying=${player.isPlaying}, " +
               "playbackState=${playbackStateToString(player.playbackState)}")
         
-        // Map ExoPlayer state to PlaybackStateCompat
+        // Map ExoPlayer state to PlaybackStateCompat - with fixes for Bluetooth controls
         val state = when {
             player.playbackState == Player.STATE_BUFFERING -> PlaybackStateCompat.STATE_BUFFERING
             player.isPlaying -> PlaybackStateCompat.STATE_PLAYING
+            // This is the key fix: Special case to ensure we report playing state correctly to external controllers
             player.playWhenReady && player.playbackState == Player.STATE_READY -> PlaybackStateCompat.STATE_PLAYING
             player.playbackState == Player.STATE_ENDED -> PlaybackStateCompat.STATE_STOPPED
             player.playbackState == Player.STATE_IDLE -> PlaybackStateCompat.STATE_NONE
@@ -531,6 +532,7 @@ class AudioService : MediaBrowserServiceCompat() {
         Log.d(TAG, "Mapped to PlaybackStateCompat: ${playbackStateCompatToString(state)}")
         
         // Define comprehensive action set for maximum Bluetooth compatibility
+        // Include ALL possible actions to ensure all controllers work
         val actions = PlaybackStateCompat.ACTION_PLAY or
                 PlaybackStateCompat.ACTION_PAUSE or
                 PlaybackStateCompat.ACTION_PLAY_PAUSE or
@@ -621,9 +623,9 @@ class AudioService : MediaBrowserServiceCompat() {
         
         // Enhanced metadata for Android Auto and lock screen with direct values 
         // to avoid any CharSequence conversion issues
-        val title = mediaMetadata.title?.toString() ?: "Unknown TitleNope"
-        val artist = mediaMetadata.artist?.toString() ?: "Unknown Artist"
-        val album = "Free Buddhist Audio"
+        val title = mediaMetadata.title?.toString() ?: mediaMetadata.displayTitle?.toString() ?: "Unknown Track"
+        val artist = mediaMetadata.artist?.toString() ?: mediaMetadata.subtitle?.toString() ?: "Unknown Artist"
+        val album = mediaMetadata.albumTitle?.toString() ?: "Free Buddhist Audio"
         
         val metadataBuilder = MediaMetadataCompat.Builder()
             // Basic metadata for MediaSession
@@ -949,6 +951,11 @@ class AudioService : MediaBrowserServiceCompat() {
             .setContentText(artist)
             .setSubText("Free Buddhist Audio")
             .setSmallIcon(R.drawable.ic_notification)
+            // Add explicit transport control flags for better Bluetooth and lock screen integration
+            .setOngoing(player.isPlaying)
+            .setSilent(false)
+            .setShowWhen(false)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
             
         // Add album art if available
         if (albumArt != null) {
@@ -991,10 +998,10 @@ class AudioService : MediaBrowserServiceCompat() {
             )
         )
         
-        // Add previous action
+        // Add previous action with correct icon (we're reusing ic_play as a placeholder)
         builder.addAction(
             NotificationCompat.Action(
-                R.drawable.ic_play,
+                R.drawable.ic_play, // Should be an actual previous icon
                 "Previous",
                 MediaButtonReceiver.buildMediaButtonPendingIntent(
                     this, 
@@ -1003,10 +1010,10 @@ class AudioService : MediaBrowserServiceCompat() {
             )
         )
         
-        // Add next action
+        // Add next action with correct icon (we're reusing ic_play as a placeholder)
         builder.addAction(
             NotificationCompat.Action(
-                R.drawable.ic_play,
+                R.drawable.ic_play, // Should be an actual next icon
                 "Next",
                 MediaButtonReceiver.buildMediaButtonPendingIntent(
                     this, 
@@ -1046,17 +1053,61 @@ class AudioService : MediaBrowserServiceCompat() {
             forceUpdateMetadata(trackTitle, speakerName, artworkUri)
         }
         
-        // IMPORTANT: Handle media button events first to ensure Bluetooth controls work
+        // IMPORTANT: Enhanced media button handling for Bluetooth compatibility
         try {
             if (intent?.action == Intent.ACTION_MEDIA_BUTTON) {
                 Log.d(TAG, "Handling media button event directly")
                 val keyEvent = intent.getParcelableExtra<android.view.KeyEvent>(Intent.EXTRA_KEY_EVENT)
                 if (keyEvent != null) {
-                    Log.d(TAG, "Media button key event: ${keyEvent.keyCode}")
+                    Log.d(TAG, "Media button key event: code=${keyEvent.keyCode}, action=${keyEvent.action}")
+                    
+                    // For ACTION_DOWN only to prevent double execution
+                    if (keyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
+                        // Manual handling for more reliable Bluetooth control
+                        when (keyEvent.keyCode) {
+                            android.view.KeyEvent.KEYCODE_MEDIA_PLAY -> {
+                                Log.d(TAG, "Explicit PLAY button pressed")
+                                player.play()
+                                updateMediaSessionState()
+                                updateNotificationState()
+                                return START_STICKY
+                            }
+                            android.view.KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+                                Log.d(TAG, "Explicit PAUSE button pressed")
+                                player.pause()
+                                updateMediaSessionState()
+                                updateNotificationState()
+                                return START_STICKY
+                            }
+                            android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                                Log.d(TAG, "Explicit PLAY/PAUSE button pressed")
+                                if (player.isPlaying) player.pause() else player.play()
+                                updateMediaSessionState()
+                                updateNotificationState()
+                                return START_STICKY
+                            }
+                            android.view.KeyEvent.KEYCODE_MEDIA_NEXT -> {
+                                Log.d(TAG, "Explicit NEXT button pressed")
+                                player.seekToNextMediaItem()
+                                updateMediaSessionState()
+                                updateNotificationState()
+                                broadcastTrackChange()
+                                return START_STICKY
+                            }
+                            android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
+                                Log.d(TAG, "Explicit PREVIOUS button pressed")
+                                player.seekToPreviousMediaItem()
+                                updateMediaSessionState()
+                                updateNotificationState()
+                                broadcastTrackChange()
+                                return START_STICKY
+                            }
+                        }
+                    }
                 }
             }
             
-            // Let MediaButtonReceiver handle the intent to route to callback
+            // Let MediaButtonReceiver handle the intent to route to callback for other cases
             val result = MediaButtonReceiver.handleIntent(mediaSessionCompat, intent)
             Log.d(TAG, "MediaButtonReceiver.handleIntent result: $result")
         } catch (e: Exception) {
