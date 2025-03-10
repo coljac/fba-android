@@ -1,15 +1,21 @@
 package com.freebuddhistaudio.FreeBuddhistAudio.viewmodel
 
 import android.app.Application
+import android.content.ComponentName
 import android.content.Intent
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionToken
+import com.google.common.util.concurrent.MoreExecutors
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -33,9 +39,8 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     private val _isUpdatingSearchResults = MutableStateFlow(false)
     val isUpdatingSearchResults: StateFlow<Boolean> = _isUpdatingSearchResults
     
-    // No need to expose viewModelScope, we'll use a different approach
-    
-    private var player: ExoPlayer? = null
+    // MediaController replaces the local ExoPlayer instance
+    private var mediaController: MediaController? = null
     
     private val _currentTalk = MutableStateFlow<Talk?>(null)
     val currentTalk: StateFlow<Talk?> = _currentTalk
@@ -66,6 +71,9 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     private val _isInAutoMode = MutableStateFlow(false)
     val isInAutoMode: StateFlow<Boolean> = _isInAutoMode
 
+    // Custom command to force metadata update
+    private val COMMAND_FORCE_UPDATE_METADATA = "com.freebuddhistaudio.COMMAND_FORCE_UPDATE_METADATA"
+
     data class PlaybackState(
         val isPlaying: Boolean = false,
         val currentTrackIndex: Int = 0,
@@ -80,6 +88,9 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         loadDownloadedTalks()
         loadFavorites()
         loadRecentPlays()
+        
+        // Initialize MediaController
+        initializeMediaController()
     }
     
     private fun checkAutoMode() {
@@ -105,12 +116,38 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
             
-            _isInAutoMode.value = isCarUiMode || isCarPackageInstalled
-            Log.d(TAG, "Auto mode detection: isCarUiMode=$isCarUiMode, isCarPackageInstalled=$isCarPackageInstalled, result=${_isInAutoMode.value}")
+            // Check if a car-related intent receiver is available (more reliable for actual connections)
+            val isAutomotiveReceiverAvailable = try {
+                // Use Media3 library service interface
+                val intent = Intent("androidx.media3.session.MediaLibraryService")
+                val resolveInfo = packageManager.queryIntentServices(intent, 0)
+                resolveInfo.any { it.serviceInfo.packageName.contains("android.car") || 
+                                  it.serviceInfo.packageName.contains("gearhead") }
+            } catch (e: Exception) {
+                false
+            }
+            
+            // IMPORTANT: Auto mode should be false on phones
+            // We're getting false positives, so let's be more strict
+            _isInAutoMode.value = false // Default to false
+            
+            // Only set to true if we're very confident
+            if (isCarUiMode) {
+                // UiModeManager is the most reliable indicator
+                _isInAutoMode.value = true
+            }
+            Log.d(TAG, "Auto mode detection: isCarUiMode=$isCarUiMode, isCarPackageInstalled=$isCarPackageInstalled, " +
+                      "isAutomotiveReceiverAvailable=$isAutomotiveReceiverAvailable, result=${_isInAutoMode.value}")
         } catch (e: Exception) {
             Log.e(TAG, "Error detecting auto mode", e)
             _isInAutoMode.value = false
         }
+    }
+    
+    // For testing - allows manual toggling of auto mode
+    fun toggleAutoMode() {
+        _isInAutoMode.value = !_isInAutoMode.value
+        Log.d(TAG, "Auto mode manually toggled to: ${_isInAutoMode.value}")
     }
     
     private fun loadRecentPlays() {
@@ -173,9 +210,8 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     
     fun playTalk(talk: Talk, startTrackIndex: Int = 0) {
         setCurrentTalk(talk)
-        initializePlayer()
         
-        player?.run {
+        mediaController?.run {
             val mediaItems = talk.tracks.map { track ->
                 val localPath = repository.getLocalTalkPath(talk.id, track.number)
                 val uri = if (localPath != null) {
@@ -185,7 +221,6 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 
                 // Create rich metadata for the media session and lock screen controls
-                // Log the values we're setting for debugging
                 Log.d(TAG, "Creating MediaItem with metadata:")
                 Log.d(TAG, "  - Title: ${track.title}")
                 Log.d(TAG, "  - Artist: ${talk.speaker}")
@@ -196,7 +231,7 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
                     .setUri(uri)
                     .setMediaId("talk_${talk.id}_track_${track.number}")
                     .setMediaMetadata(
-                        androidx.media3.common.MediaMetadata.Builder()
+                        MediaMetadata.Builder()
                             .setTitle(track.title)
                             .setArtist(talk.speaker)
                             .setAlbumTitle("Free Buddhist Audio")
@@ -204,9 +239,7 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
                             .setDisplayTitle(track.title)
                             .setSubtitle(talk.speaker)
                             .setDescription("Buddhist talk by ${talk.speaker}")
-                            // Extra fields for better compatibility with various systems
                             .setIsPlayable(true)
-                            .setIsBrowsable(false)
                             .build()
                     )
                     .build()
@@ -230,9 +263,10 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
             }
             
             prepare()
+            play()
             
-            // Start audio service explicitly to ensure media playback controls work
-            startAudioService()
+            // Make sure the explicit metadata is sent to the service
+            sendExplicitMetadataToService(talk)
         }
         
         viewModelScope.launch {
@@ -241,28 +275,22 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
     
-    private fun startAudioService() {
-        val context = getApplication<Application>().applicationContext
-        val intent = Intent(context, Class.forName("com.freebuddhistaudio.FreeBuddhistAudio.playback.AudioService"))
-        
-        // Send explicit metadata information with the intent to ensure service has correct data
-        val currentTalk = _currentTalk.value
-        val currentTrack = _playbackState.value.currentTrack
-        
-        if (currentTalk != null && currentTrack != null) {
-            // Add metadata to intent for direct access by service
-            intent.putExtra("EXTRA_TRACK_TITLE", currentTrack.title)
-            intent.putExtra("EXTRA_SPEAKER_NAME", currentTalk.speaker)
-            intent.putExtra("EXTRA_ARTWORK_URI", currentTalk.imageUrl)
+    // Send explicit metadata to the service
+    private fun sendExplicitMetadataToService(talk: Talk) {
+        val currentTrack = _playbackState.value.currentTrack ?: 
+            if (talk.tracks.isNotEmpty()) talk.tracks[0] else null
             
-            Log.d(TAG, "Starting service with explicit metadata:")
-            Log.d(TAG, "  Title: ${currentTrack.title}")
-            Log.d(TAG, "  Artist: ${currentTalk.speaker}")
-            Log.d(TAG, "  Album: Free Buddhist Audio")
-            Log.d(TAG, "  Artwork: ${currentTalk.imageUrl}")
+        if (currentTrack != null) {
+            // Use a custom command to force metadata update in the service
+            mediaController?.run {
+                val args = Bundle().apply {
+                    putString("title", currentTrack.title)
+                    putString("artist", talk.speaker)
+                    putString("artworkUri", talk.imageUrl)
+                }
+                sendCustomCommand(SessionCommand(COMMAND_FORCE_UPDATE_METADATA, Bundle()), args)
+            }
         }
-        
-        context.startService(intent)
     }
     
     fun setCurrentTalk(talk: Talk) {
@@ -273,25 +301,11 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun togglePlayPause() {
-        player?.let {
-            // Start the service first to ensure it's running
-            startAudioService()
-            
-            val context = getApplication<Application>().applicationContext
-            val intent = Intent(context, Class.forName("com.freebuddhistaudio.FreeBuddhistAudio.playback.AudioService"))
-            
+        mediaController?.let {
             if (it.isPlaying) {
-                // Send pause command to the service
-                intent.action = "ACTION_PAUSE"
-                context.startService(intent)
-                
                 it.pause()
                 _playbackState.value = _playbackState.value.copy(isPlaying = false)
             } else {
-                // Send play command to the service
-                intent.action = "ACTION_PLAY"
-                context.startService(intent)
-                
                 it.play()
                 _playbackState.value = _playbackState.value.copy(isPlaying = true)
             }
@@ -310,21 +324,22 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
             }
             
             if (trackIndex >= 0 && trackIndex < talk.tracks.size) {
-                // If player is already initialized with this talk
-                if (player?.mediaItemCount == talk.tracks.size) {
-                    player?.seekTo(trackIndex, 0)
-                    player?.play()
-                    
-                    // Send play command to service
-                    val context = getApplication<Application>().applicationContext
-                    val intent = Intent(context, Class.forName("com.freebuddhistaudio.FreeBuddhistAudio.playback.AudioService"))
-                    intent.action = "ACTION_PLAY"
-                    context.startService(intent)
-                    
-                    updatePlaybackState()
-                } else {
-                    // Initialize player with this talk starting at the selected track
-                    playTalk(talk, trackIndex)
+                mediaController?.let { controller ->
+                    // If controller already has media items for this talk
+                    if (controller.mediaItemCount == talk.tracks.size) {
+                        controller.seekTo(trackIndex, 0)
+                        controller.play()
+                        updatePlaybackState()
+                    } else {
+                        // Initialize with this talk starting at the selected track
+                        playTalk(talk, trackIndex)
+                    }
+                } ?: run {
+                    // Initialize controller if needed
+                    initializeMediaController()
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        playTalk(talk, trackIndex)
+                    }, 500)
                 }
             } else {
                 Log.w(TAG, "Invalid track index: $trackIndex (valid range is 0-${talk.tracks.size - 1})")
@@ -333,16 +348,7 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun seekForward() {
-        startAudioService()
-        
-        // Send command to service
-        val context = getApplication<Application>().applicationContext
-        val intent = Intent(context, Class.forName("com.freebuddhistaudio.FreeBuddhistAudio.playback.AudioService"))
-        intent.action = "ACTION_SKIP_FORWARD"
-        context.startService(intent)
-        
-        // Update local player - seek forward 10 seconds
-        player?.let { 
+        mediaController?.let { 
             val newPosition = it.currentPosition + 10000
             it.seekTo(newPosition)
         }
@@ -350,16 +356,7 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun seekBackward() {
-        startAudioService()
-        
-        // Send command to service
-        val context = getApplication<Application>().applicationContext
-        val intent = Intent(context, Class.forName("com.freebuddhistaudio.FreeBuddhistAudio.playback.AudioService"))
-        intent.action = "ACTION_SKIP_BACKWARD"
-        context.startService(intent)
-        
-        // Update local player - seek backward 10 seconds
-        player?.let {
+        mediaController?.let {
             val newPosition = (it.currentPosition - 10000).coerceAtLeast(0)
             it.seekTo(newPosition)
         }
@@ -367,30 +364,12 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun skipToNextTrack() {
-        startAudioService()
-        
-        // Send command to service
-        val context = getApplication<Application>().applicationContext
-        val intent = Intent(context, Class.forName("com.freebuddhistaudio.FreeBuddhistAudio.playback.AudioService"))
-        intent.action = "ACTION_NEXT"
-        context.startService(intent)
-        
-        // Update local player
-        player?.seekToNextMediaItem()
+        mediaController?.seekToNextMediaItem()
         updatePlaybackState()
     }
 
     fun skipToPreviousTrack() {
-        startAudioService()
-        
-        // Send command to service
-        val context = getApplication<Application>().applicationContext
-        val intent = Intent(context, Class.forName("com.freebuddhistaudio.FreeBuddhistAudio.playback.AudioService"))
-        intent.action = "ACTION_PREVIOUS"
-        context.startService(intent)
-        
-        // Update local player
-        player?.seekToPreviousMediaItem()
+        mediaController?.seekToPreviousMediaItem()
         updatePlaybackState()
     }
 
@@ -554,143 +533,81 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     }
     
     override fun onCleared() {
-        stopAudioService()
-        player?.release()
-        player = null
+        mediaController?.release()
+        mediaController = null
         super.onCleared()
     }
-    
-    private fun stopAudioService() {
-        // Stop the media service when the ViewModel is cleared
-        try {
-            val context = getApplication<Application>().applicationContext
-            val intent = Intent(context, Class.forName("com.freebuddhistaudio.FreeBuddhistAudio.playback.AudioService"))
-            context.stopService(intent)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error stopping service", e)
-        }
-    }
 
-    private fun initializePlayer() {
-        if (player == null) {
-            player = ExoPlayer.Builder(getApplication()).build().apply {
-                addListener(object : Player.Listener {
-                    override fun onIsPlayingChanged(isPlaying: Boolean) {
-                        _playbackState.value = _playbackState.value.copy(isPlaying = isPlaying)
-                    }
-
-                    override fun onPositionDiscontinuity(
-                        oldPosition: Player.PositionInfo,
-                        newPosition: Player.PositionInfo,
-                        reason: Int
-                    ) {
-                        updatePlaybackState()
-                    }
-                    
-                    override fun onPlaybackStateChanged(playbackState: Int) {
-                        updatePlaybackState()
-                    }
-                    
-                    override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                        updatePlaybackState()
-                    }
-                })
-            }
+    private fun initializeMediaController() {
+        if (mediaController == null) {
+            val sessionToken = SessionToken(
+                getApplication(),
+                ComponentName(
+                    getApplication(),
+                    "com.freebuddhistaudio.FreeBuddhistAudio.playback.AudioService"
+                )
+            )
+            
+            val controllerFuture = MediaController.Builder(getApplication(), sessionToken)
+                .buildAsync()
+                
+            controllerFuture.addListener({
+                try {
+                    mediaController = controllerFuture.get()
+                    mediaController?.addListener(PlayerListener())
+                    Log.d(TAG, "MediaController successfully initialized")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error initializing MediaController", e)
+                }
+            }, MoreExecutors.directExecutor())
         }
     }
     
-    /**
-     * Method to synchronize playback state with the service
-     * This allows Bluetooth and lock screen controls to correctly sync with the UI
-     */
+    private inner class PlayerListener : Player.Listener {
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            _playbackState.value = _playbackState.value.copy(isPlaying = isPlaying)
+        }
+
+        override fun onPositionDiscontinuity(
+            oldPosition: Player.PositionInfo,
+            newPosition: Player.PositionInfo,
+            reason: Int
+        ) {
+            updatePlaybackState()
+        }
+        
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            updatePlaybackState()
+        }
+        
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            updatePlaybackState()
+        }
+    }
+    
+    // Method to synchronize playback state with the UI
     fun syncPlaybackState(isPlaying: Boolean) {
         Log.d(TAG, "Syncing external playback state change: isPlaying=$isPlaying")
         
-        // Update local player state if there's a mismatch
-        player?.let { exoPlayer ->
-            Log.d(TAG, "Current local player state: isPlaying=${exoPlayer.isPlaying}, " +
-                      "playWhenReady=${exoPlayer.playWhenReady}, " +
-                      "playbackState=${playbackStateToString(exoPlayer.playbackState)}")
+        // Update controller state if there's a mismatch
+        mediaController?.let { controller ->
+            Log.d(TAG, "Current controller state: isPlaying=${controller.isPlaying}")
             
-            if (exoPlayer.isPlaying != isPlaying) {
+            if (controller.isPlaying != isPlaying) {
                 try {
                     if (isPlaying) {
-                        // Use multiple methods to ensure playback starts
-                        Log.d(TAG, "Starting playback in local player")
-                        
-                        // Make sure we're prepared
-                        if (exoPlayer.playbackState == Player.STATE_IDLE) {
-                            exoPlayer.prepare()
-                        }
-                        
-                        // Method 1: Use play()
-                        exoPlayer.play()
-                        
-                        // Method 2: Set playWhenReady directly
-                        exoPlayer.playWhenReady = true
+                        controller.play()
                     } else {
-                        // Use multiple methods to ensure playback stops
-                        Log.d(TAG, "Pausing playback in local player")
-                        
-                        // Method 1: Use pause()
-                        exoPlayer.pause()
-                        
-                        // Method 2: Set playWhenReady directly
-                        exoPlayer.playWhenReady = false
+                        controller.pause()
                     }
                     
                     // Force update UI state immediately
                     _playbackState.value = _playbackState.value.copy(isPlaying = isPlaying)
                     
-                    // Re-check after a delay to ensure the state actually changed
-                    Handler(Looper.getMainLooper()).postDelayed({
-                        Log.d(TAG, "Verifying player state change: local player isPlaying=${exoPlayer.isPlaying}")
-                        _playbackState.value = _playbackState.value.copy(isPlaying = exoPlayer.isPlaying)
-                    }, 200)
-                    
-                    Log.d(TAG, "Local player state updated to match service: isPlaying=$isPlaying")
+                    Log.d(TAG, "Controller state updated to match: isPlaying=$isPlaying")
                 } catch (e: Exception) {
                     Log.e(TAG, "Error syncing playback state", e)
                 }
-            }
-        }
-    }
-    
-    /**
-     * Method to synchronize track changes from the service (via broadcast)
-     * This allows Bluetooth and lock screen controls to correctly sync the track with the UI
-     */
-    fun syncTrackChange(trackIndex: Int, isPlaying: Boolean) {
-        Log.d(TAG, "Syncing external track change: index=$trackIndex, isPlaying=$isPlaying")
-        
-        // Update local player state if there's a mismatch with the current track
-        player?.let { exoPlayer ->
-            val currentTrack = _currentTalk.value?.let { talk ->
-                if (trackIndex >= 0 && trackIndex < talk.tracks.size) talk.tracks[trackIndex] else null
-            }
-            
-            try {
-                // Only change track if we need to
-                if (exoPlayer.currentMediaItemIndex != trackIndex) {
-                    Log.d(TAG, "Seeking to track $trackIndex (current is ${exoPlayer.currentMediaItemIndex})")
-                    exoPlayer.seekTo(trackIndex, 0)
-                }
-                
-                // Update playback state
-                _playbackState.value = _playbackState.value.copy(
-                    isPlaying = isPlaying,
-                    currentTrackIndex = trackIndex,
-                    currentTrack = currentTrack
-                )
-                
-                // Sync play state
-                if (isPlaying != exoPlayer.isPlaying) {
-                    syncPlaybackState(isPlaying)
-                }
-                
-                Log.d(TAG, "Successfully synced track change")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error syncing track change", e)
             }
         }
     }
@@ -707,20 +624,20 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     }
     
     private fun updatePlaybackState() {
-        player?.let { exoPlayer ->
+        mediaController?.let { controller ->
             // Get the current track based on the media item index
             val currentTrack = _currentTalk.value?.let { talk ->
-                val index = exoPlayer.currentMediaItemIndex
+                val index = controller.currentMediaItemIndex
                 if (index >= 0 && index < talk.tracks.size) talk.tracks[index] else null
             }
             
             _playbackState.value = _playbackState.value.copy(
-                isPlaying = exoPlayer.isPlaying,
-                currentTrackIndex = exoPlayer.currentMediaItemIndex,
-                position = exoPlayer.currentPosition,
-                duration = exoPlayer.duration,
+                isPlaying = controller.isPlaying,
+                currentTrackIndex = controller.currentMediaItemIndex,
+                position = controller.currentPosition,
+                duration = controller.duration,
                 currentTrack = currentTrack
             )
         }
     }
-} 
+}

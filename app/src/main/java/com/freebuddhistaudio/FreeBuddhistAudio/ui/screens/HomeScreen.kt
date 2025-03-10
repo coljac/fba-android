@@ -1,6 +1,8 @@
 package com.freebuddhistaudio.FreeBuddhistAudio.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,6 +24,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import com.freebuddhistaudio.FreeBuddhistAudio.data.Talk
 import com.freebuddhistaudio.FreeBuddhistAudio.ui.components.TalkItem
 import com.freebuddhistaudio.FreeBuddhistAudio.viewmodel.AudioViewModel
+import android.util.Log
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -34,6 +37,7 @@ fun HomeScreen(
     val recentPlays by viewModel.recentPlays.collectAsState()
     val currentTalk by viewModel.currentTalk.collectAsState()
     val playbackState by viewModel.playbackState.collectAsState()
+    val isInAutoMode by viewModel.isInAutoMode.collectAsState()
 
     Scaffold(
         topBar = {
@@ -54,6 +58,18 @@ fun HomeScreen(
             // Create a coroutine scope that follows the lifecycle of this composable
             val scope = rememberCoroutineScope()
             
+            // Hidden debug shortcut (triple tap on the top right corner)
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(48.dp)
+                    .padding(top = 8.dp, end = 8.dp)
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { viewModel.toggleAutoMode() }
+            )
+            
             SwipeRefresh(
                 state = rememberSwipeRefreshState(isRefreshing),
                 onRefresh = {
@@ -72,6 +88,129 @@ fun HomeScreen(
                         .fillMaxSize()
                         .padding(padding)
                 ) {
+                    // Add player controls based on mode
+                    if (currentTalk != null) {
+                        item {
+                            // Make sure isInAutoMode is working correctly
+                            Log.d("HomeScreen", "isInAutoMode: $isInAutoMode")
+                            
+                            // Prominent player controls only in Auto mode
+                            if (isInAutoMode) {
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                                    ),
+                                    elevation = CardDefaults.cardElevation(
+                                        defaultElevation = 4.dp
+                                    ),
+                                    shape = RoundedCornerShape(16.dp)
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        // Track info
+                                        currentTalk?.let { talk ->
+                                            Text(
+                                                text = talk.title,
+                                                style = MaterialTheme.typography.titleMedium,
+                                                modifier = Modifier.padding(bottom = 8.dp)
+                                            )
+                                            
+                                            playbackState.currentTrack?.let { track ->
+                                                Text(
+                                                    text = track.title.ifEmpty { "Track ${playbackState.currentTrackIndex + 1}" },
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    modifier = Modifier.padding(bottom = 16.dp)
+                                                )
+                                            }
+                                        }
+                                        
+                                        // Main controls row - only large in Auto mode
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceEvenly,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            // Previous track
+                                            FilledTonalIconButton(
+                                                onClick = { viewModel.skipToPreviousTrack() },
+                                                modifier = Modifier.size(56.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.SkipPrevious, 
+                                                    contentDescription = "Previous Track",
+                                                    modifier = Modifier.size(32.dp)
+                                                )
+                                            }
+                                            
+                                            // Skip backward 10s
+                                            FilledTonalIconButton(
+                                                onClick = { viewModel.seekBackward() },
+                                                modifier = Modifier.size(56.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Replay10, 
+                                                    contentDescription = "Skip Back 10 Seconds",
+                                                    modifier = Modifier.size(32.dp)
+                                                )
+                                            }
+                                            
+                                            // Play/Pause - extra large and prominent
+                                            FilledIconButton(
+                                                onClick = { viewModel.togglePlayPause() },
+                                                modifier = Modifier.size(72.dp),
+                                                colors = IconButtonDefaults.filledIconButtonColors(
+                                                    containerColor = MaterialTheme.colorScheme.primary
+                                                )
+                                            ) {
+                                                Icon(
+                                                    if (playbackState.isPlaying) Icons.Default.Pause 
+                                                    else Icons.Default.PlayArrow,
+                                                    contentDescription = "Play/Pause",
+                                                    modifier = Modifier.size(48.dp),
+                                                    tint = MaterialTheme.colorScheme.onPrimary
+                                                )
+                                            }
+                                            
+                                            // Skip forward 10s
+                                            FilledTonalIconButton(
+                                                onClick = { viewModel.seekForward() },
+                                                modifier = Modifier.size(56.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Forward10, 
+                                                    contentDescription = "Skip Forward 10 Seconds",
+                                                    modifier = Modifier.size(32.dp)
+                                                )
+                                            }
+                                            
+                                            // Next track
+                                            FilledTonalIconButton(
+                                                onClick = { viewModel.skipToNextTrack() },
+                                                modifier = Modifier.size(56.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.SkipNext, 
+                                                    contentDescription = "Next Track",
+                                                    modifier = Modifier.size(32.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                // No player controls in phone UI - we have the bottom bar instead
+                                // Just show a spacer to maintain consistent layout
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
+                        }
+                    }
             
                     if (recentPlays.isNotEmpty()) {
                         item {

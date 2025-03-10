@@ -27,12 +27,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import com.freebuddhistaudio.FreeBuddhistAudio.ui.components.AutoModePlayer
 import com.freebuddhistaudio.FreeBuddhistAudio.viewmodel.AudioViewModel
 import com.freebuddhistaudio.FreeBuddhistAudio.data.Talk
 import com.freebuddhistaudio.FreeBuddhistAudio.data.Track
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,6 +51,11 @@ fun TalkDetailScreen(
     val isDownloaded by viewModel.isDownloaded.collectAsState()
     val downloadError by viewModel.downloadError.collectAsState()
     val isInAutoMode by viewModel.isInAutoMode.collectAsState()
+    
+    // Log to verify auto mode state and force a refresh if needed
+    LaunchedEffect(isInAutoMode) {
+        android.util.Log.d("TalkDetailScreen", "isInAutoMode: $isInAutoMode")
+    }
 
     Scaffold(
         topBar = {
@@ -165,13 +167,140 @@ fun TalkDetailScreen(
                         }
                     }
                 }
-                // Use the appropriate player based on device mode
+                // Player controls - different styles for auto and phone mode
                 if (isInAutoMode) {
-                    // Use specialized Auto player with larger controls and simpler UI
-                    AutoModePlayer(viewModel = viewModel)
+                    // Enhanced Player Controls for Android Auto - large and prominent
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 16.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        ),
+                        elevation = CardDefaults.cardElevation(
+                            defaultElevation = 4.dp
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            // Track info
+                            playbackState.currentTrack?.let { track ->
+                                Text(
+                                    text = track.title.ifEmpty { "Track ${playbackState.currentTrackIndex + 1}" },
+                                    style = MaterialTheme.typography.titleMedium,
+                                    modifier = Modifier.padding(bottom = 8.dp)
+                                )
+                            }
+                            
+                            // Main controls row - LARGE for Auto
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 16.dp),
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Previous track - larger
+                                FilledTonalIconButton(
+                                    onClick = { viewModel.skipToPreviousTrack() },
+                                    modifier = Modifier.size(56.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.SkipPrevious, 
+                                        contentDescription = "Previous Track",
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                }
+                                
+                                // Skip backward 10s - larger
+                                FilledTonalIconButton(
+                                    onClick = { viewModel.seekBackward() },
+                                    modifier = Modifier.size(56.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Replay10, 
+                                        contentDescription = "Skip Back 10 Seconds",
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                }
+                                
+                                // Play/Pause - extra large and prominent
+                                FilledIconButton(
+                                    onClick = { viewModel.togglePlayPause() },
+                                    modifier = Modifier.size(72.dp),
+                                    colors = IconButtonDefaults.filledIconButtonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary
+                                    )
+                                ) {
+                                    Icon(
+                                        if (playbackState.isPlaying) Icons.Default.Pause 
+                                        else Icons.Default.PlayArrow,
+                                        contentDescription = "Play/Pause",
+                                        modifier = Modifier.size(48.dp),
+                                        tint = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                }
+                                
+                                // Skip forward 10s - larger
+                                FilledTonalIconButton(
+                                    onClick = { viewModel.seekForward() },
+                                    modifier = Modifier.size(56.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Forward10, 
+                                        contentDescription = "Skip Forward 10 Seconds",
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                }
+                                
+                                // Next track - larger
+                                FilledTonalIconButton(
+                                    onClick = { viewModel.skipToNextTrack() },
+                                    modifier = Modifier.size(56.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.SkipNext, 
+                                        contentDescription = "Next Track",
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
                 } else {
-                    // Standard player control with progress bar for regular phone UI
-                    TrackPlayerControls(viewModel = viewModel)
+                    // Regular size controls for phone mode
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = { viewModel.skipToPreviousTrack() }) {
+                            Icon(Icons.Default.SkipPrevious, "Previous Track")
+                        }
+                        IconButton(onClick = { viewModel.seekBackward() }) {
+                            Icon(Icons.Default.Replay10, "Skip Back 10 Seconds")
+                        }
+                        FilledIconButton(
+                            onClick = { viewModel.togglePlayPause() }
+                        ) {
+                            Icon(
+                                if (playbackState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                "Play/Pause"
+                            )
+                        }
+                        IconButton(onClick = { viewModel.seekForward() }) {
+                            Icon(Icons.Default.Forward10, "Skip Forward 10 Seconds")
+                        }
+                        IconButton(onClick = { viewModel.skipToNextTrack() }) {
+                            Icon(Icons.Default.SkipNext, "Next Track")
+                        }
+                    }
                 }
             }
         }
@@ -209,7 +338,7 @@ fun TalkDetailScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Only show the description if not in Auto mode
+                // Only show description in phone mode
                 if (!isInAutoMode) {
                     Text(
                         text = "Description",
@@ -301,198 +430,6 @@ fun TalkDetailScreen(
             }
         )
     }
-}
-
-@Composable
-fun TrackPlayerControls(
-    viewModel: AudioViewModel,
-    modifier: Modifier = Modifier
-) {
-    val playbackState by viewModel.playbackState.collectAsState()
-    
-    // Track progress
-    var progress by remember { mutableFloatStateOf(0f) }
-    var showWholeProgress by remember { mutableStateOf(true) }
-    
-    // Update progress every second while playing
-    LaunchedEffect(playbackState.isPlaying, playbackState.position, playbackState.duration) {
-        // Initialize progress
-        progress = if (playbackState.duration > 0) {
-            (playbackState.position.toFloat() / playbackState.duration.toFloat()).coerceIn(0f, 1f)
-        } else 0f
-        
-        // Continue updating while playing
-        if (playbackState.isPlaying && playbackState.duration > 0) {
-            while (isActive) {
-                delay(1000) // Update every second
-                progress = (playbackState.position.toFloat() / playbackState.duration.toFloat()).coerceIn(0f, 1f)
-            }
-        }
-    }
-    
-    // Regular player for phone UI with progress bar
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = 16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        ),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = 4.dp
-        )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // Track info
-            playbackState.currentTrack?.let { track ->
-                Text(
-                    text = track.title.ifEmpty { "Track ${playbackState.currentTrackIndex + 1}" },
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-            }
-            
-            // Progress bar with option to toggle between whole talk and current track
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Progress bar
-                Column(modifier = Modifier.weight(1f)) {
-                    if (playbackState.duration > 0) {
-                        // Progress text above bar
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            val currentPosition = formatDuration(playbackState.position)
-                            val totalDuration = formatDuration(playbackState.duration)
-                            
-                            Text(
-                                text = currentPosition,
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                            Text(
-                                text = totalDuration,
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                        
-                        // Progress bar
-                        LinearProgressIndicator(
-                            progress = { progress },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(4.dp)
-                                .padding(vertical = 4.dp),
-                            color = MaterialTheme.colorScheme.primary,
-                            trackColor = MaterialTheme.colorScheme.primaryContainer
-                        )
-                    }
-                }
-                
-                // Toggle button
-                TextButton(
-                    onClick = { showWholeProgress = !showWholeProgress },
-                    modifier = Modifier.padding(start = 8.dp)
-                ) {
-                    Text(
-                        text = if (showWholeProgress) "Track" else "Talk",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            }
-            
-            // Main controls row
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 16.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Previous track - larger
-                FilledTonalIconButton(
-                    onClick = { viewModel.skipToPreviousTrack() },
-                    modifier = Modifier.size(56.dp)
-                ) {
-                    Icon(
-                        Icons.Default.SkipPrevious, 
-                        contentDescription = "Previous Track",
-                        modifier = Modifier.size(32.dp)
-                    )
-                }
-                
-                // Skip backward 10s - larger
-                FilledTonalIconButton(
-                    onClick = { viewModel.seekBackward() },
-                    modifier = Modifier.size(56.dp)
-                ) {
-                    Icon(
-                        Icons.Default.Replay10, 
-                        contentDescription = "Skip Back 10 Seconds",
-                        modifier = Modifier.size(32.dp)
-                    )
-                }
-                
-                // Play/Pause - extra large and prominent
-                FilledIconButton(
-                    onClick = { viewModel.togglePlayPause() },
-                    modifier = Modifier.size(72.dp),
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.primary
-                    )
-                ) {
-                    Icon(
-                        if (playbackState.isPlaying) Icons.Default.Pause 
-                        else Icons.Default.PlayArrow,
-                        contentDescription = "Play/Pause",
-                        modifier = Modifier.size(48.dp),
-                        tint = MaterialTheme.colorScheme.onPrimary
-                    )
-                }
-                
-                // Skip forward 10s - larger
-                FilledTonalIconButton(
-                    onClick = { viewModel.seekForward() },
-                    modifier = Modifier.size(56.dp)
-                ) {
-                    Icon(
-                        Icons.Default.Forward10, 
-                        contentDescription = "Skip Forward 10 Seconds",
-                        modifier = Modifier.size(32.dp)
-                    )
-                }
-                
-                // Next track - larger
-                FilledTonalIconButton(
-                    onClick = { viewModel.skipToNextTrack() },
-                    modifier = Modifier.size(56.dp)
-                ) {
-                    Icon(
-                        Icons.Default.SkipNext, 
-                        contentDescription = "Next Track",
-                        modifier = Modifier.size(32.dp)
-                    )
-                }
-            }
-        }
-    }
-}
-
-// Helper function to format milliseconds to mm:ss format
-private fun formatDuration(durationMs: Long): String {
-    val totalSeconds = durationMs / 1000
-    val minutes = totalSeconds / 60
-    val seconds = totalSeconds % 60
-    return "%d:%02d".format(minutes, seconds)
 }
 
 @Composable

@@ -1,7 +1,6 @@
 package com.freebuddhistaudio.FreeBuddhistAudio.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -17,8 +16,6 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.freebuddhistaudio.FreeBuddhistAudio.data.Talk
 import com.freebuddhistaudio.FreeBuddhistAudio.viewmodel.AudioViewModel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 
 @Composable
 fun BottomPlayerBar(
@@ -30,42 +27,9 @@ fun BottomPlayerBar(
     val currentTalk by viewModel.currentTalk.collectAsState()
     val playbackState by viewModel.playbackState.collectAsState()
     val isInAutoMode by viewModel.isInAutoMode.collectAsState()
-    
-    // Track progress
-    var showTrackProgress by remember { mutableStateOf(true) }
-    var progress by remember { mutableFloatStateOf(0f) }
-    
-    // Calculate progress based on either track or total talk duration
-    LaunchedEffect(playbackState.isPlaying, playbackState.position, playbackState.duration, showTrackProgress) {
-        // Initialize progress based on selected mode
-        progress = if (playbackState.duration > 0) {
-            // If showing track progress, use position/duration
-            if (showTrackProgress) {
-                (playbackState.position.toFloat() / playbackState.duration.toFloat()).coerceIn(0f, 1f)
-            } else {
-                // For whole talk progress, we would need total duration and overall position
-                // For now, we'll use track progress as a fallback
-                (playbackState.position.toFloat() / playbackState.duration.toFloat()).coerceIn(0f, 1f)
-                // TODO: Implement whole talk progress when that data is available
-            }
-        } else 0f
-        
-        // Continue updating while playing
-        if (playbackState.isPlaying && playbackState.duration > 0) {
-            while (isActive) {
-                delay(1000) // Update every second
-                progress = if (showTrackProgress) {
-                    (playbackState.position.toFloat() / playbackState.duration.toFloat()).coerceIn(0f, 1f)
-                } else {
-                    // TODO: Implement whole talk progress when that data is available
-                    (playbackState.position.toFloat() / playbackState.duration.toFloat()).coerceIn(0f, 1f)
-                }
-            }
-        }
-    }
 
-    // Don't show bottom player bar on talk detail screen
-    if (currentScreen == "TalkDetail") {
+    // Don't show bottom player bar on talk detail screen or in auto mode (we have big controls there)
+    if (currentScreen == "TalkDetail" || isInAutoMode) {
         return
     }
 
@@ -76,308 +40,70 @@ fun BottomPlayerBar(
                 .wrapContentHeight(), // Only take the height we need
             tonalElevation = 8.dp
         ) {
-            Column {
-                // Clickable progress bar at the top with indicator of current mode
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { showTrackProgress = !showTrackProgress }
-                ) {
-                    if (playbackState.duration > 0) {
-                        LinearProgressIndicator(
-                            progress = { progress },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(3.dp),
-                            color = MaterialTheme.colorScheme.primary,
-                            trackColor = MaterialTheme.colorScheme.primaryContainer
-                        )
-                    } else {
-                        LinearProgressIndicator(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(3.dp)
-                        )
-                    }
-                    
-                    // Small indicator of current progress mode
-                    Text(
-                        text = if (showTrackProgress) "Track" else "Talk",
-                        style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .padding(end = 8.dp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                    )
-                }
-                
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(70.dp) // Increased height for better visibility
-                        .padding(horizontal = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    AsyncImage(
-                        model = talk.imageUrl,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .size(56.dp)
-                            .padding(4.dp)
-                            .clickable { onTalkClick(talk) }
-                    )
-                    
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(horizontal = 8.dp)
-                            .clickable { onTalkClick(talk) }
-                    ) {
-                        Text(
-                            text = talk.title,
-                            style = MaterialTheme.typography.bodyMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = talk.speaker,
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        
-                        // Track title if available
-                        playbackState.currentTrack?.let { track ->
-                            if (track.title.isNotEmpty()) {
-                                Text(
-                                    text = track.title,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
-                    }
-
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Skip backward 10s
-                        IconButton(
-                            onClick = { viewModel.seekBackward() },
-                            modifier = Modifier.size(40.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.Replay10, 
-                                contentDescription = "Skip Back 10 Seconds",
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-                        
-                        // Previous track
-                        IconButton(
-                            onClick = { viewModel.skipToPreviousTrack() },
-                            modifier = Modifier.size(40.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.SkipPrevious, 
-                                contentDescription = "Previous Track",
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-                        
-                        // Play/Pause button (larger and more prominent)
-                        FilledIconButton(
-                            onClick = { viewModel.togglePlayPause() },
-                            modifier = Modifier.size(48.dp),
-                            shape = CircleShape,
-                            colors = IconButtonDefaults.filledIconButtonColors(
-                                containerColor = MaterialTheme.colorScheme.primary
-                            )
-                        ) {
-                            Icon(
-                                if (playbackState.isPlaying) Icons.Default.Pause 
-                                else Icons.Default.PlayArrow,
-                                contentDescription = "Play/Pause",
-                                modifier = Modifier.size(32.dp),
-                                tint = MaterialTheme.colorScheme.onPrimary
-                            )
-                        }
-                        
-                        // Next track
-                        IconButton(
-                            onClick = { viewModel.skipToNextTrack() },
-                            modifier = Modifier.size(40.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.SkipNext, 
-                                contentDescription = "Next Track",
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-                        
-                        // Skip forward 10s
-                        IconButton(
-                            onClick = { viewModel.seekForward() },
-                            modifier = Modifier.size(40.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.Forward10, 
-                                contentDescription = "Skip Forward 10 Seconds",
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
- * Auto-sized player UI designed specifically for Android Auto
- */
-@Composable
-fun AutoModePlayer(
-    viewModel: AudioViewModel,
-    modifier: Modifier = Modifier
-) {
-    val currentTalk by viewModel.currentTalk.collectAsState()
-    val playbackState by viewModel.playbackState.collectAsState()
-    
-    // Track progress
-    var progress by remember { mutableFloatStateOf(0f) }
-    
-    // Update progress every second while playing
-    LaunchedEffect(playbackState.isPlaying, playbackState.position, playbackState.duration) {
-        // Initialize progress
-        progress = if (playbackState.duration > 0) {
-            (playbackState.position.toFloat() / playbackState.duration.toFloat()).coerceIn(0f, 1f)
-        } else 0f
-        
-        // Continue updating while playing
-        if (playbackState.isPlaying && playbackState.duration > 0) {
-            while (isActive) {
-                delay(1000) // Update every second
-                progress = (playbackState.position.toFloat() / playbackState.duration.toFloat()).coerceIn(0f, 1f)
-            }
-        }
-    }
-
-    currentTalk?.let { talk ->
-        Card(
-            modifier = modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            ),
-            elevation = CardDefaults.cardElevation(
-                defaultElevation = 4.dp
-            )
-        ) {
-            Column(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .height(56.dp) // Standard height for phone UI
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // Track info - bigger text for Auto
-                playbackState.currentTrack?.let { track ->
-                    Text(
-                        text = track.title.ifEmpty { "Track ${playbackState.currentTrackIndex + 1}" },
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-                }
-                
-                // Progress bar
-                if (playbackState.duration > 0) {
-                    LinearProgressIndicator(
-                        progress = { progress },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(4.dp)
-                            .padding(vertical = 8.dp),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.primaryContainer
-                    )
-                }
-                
-                // Main controls row - larger buttons for Auto
-                Row(
+                AsyncImage(
+                    model = talk.imageUrl,
+                    contentDescription = null,
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 16.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
+                        .size(48.dp)
+                        .padding(4.dp)
+                )
+                
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 8.dp)
+                ) {
+                    Text(
+                        text = talk.title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = talk.speaker,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // Standard size controls for phone mode
+                    
                     // Previous track
-                    FilledTonalIconButton(
-                        onClick = { viewModel.skipToPreviousTrack() },
-                        modifier = Modifier.size(56.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.SkipPrevious, 
-                            contentDescription = "Previous Track",
-                            modifier = Modifier.size(32.dp)
-                        )
+                    IconButton(onClick = { viewModel.skipToPreviousTrack() }) {
+                        Icon(Icons.Default.SkipPrevious, "Previous Track")
                     }
                     
-                    // Skip backward 10s
-                    FilledTonalIconButton(
-                        onClick = { viewModel.seekBackward() },
-                        modifier = Modifier.size(56.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Replay10, 
-                            contentDescription = "Skip Back 10 Seconds",
-                            modifier = Modifier.size(32.dp)
-                        )
-                    }
-                    
-                    // Play/Pause
+                    // Play/Pause button
                     FilledIconButton(
                         onClick = { viewModel.togglePlayPause() },
-                        modifier = Modifier.size(72.dp),
-                        colors = IconButtonDefaults.filledIconButtonColors(
-                            containerColor = MaterialTheme.colorScheme.primary
-                        )
+                        modifier = Modifier.size(42.dp),
+                        shape = CircleShape
                     ) {
                         Icon(
                             if (playbackState.isPlaying) Icons.Default.Pause 
                             else Icons.Default.PlayArrow,
-                            contentDescription = "Play/Pause",
-                            modifier = Modifier.size(48.dp),
-                            tint = MaterialTheme.colorScheme.onPrimary
-                        )
-                    }
-                    
-                    // Skip forward 10s
-                    FilledTonalIconButton(
-                        onClick = { viewModel.seekForward() },
-                        modifier = Modifier.size(56.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Forward10, 
-                            contentDescription = "Skip Forward 10 Seconds",
-                            modifier = Modifier.size(32.dp)
+                            contentDescription = "Play/Pause"
                         )
                     }
                     
                     // Next track
-                    FilledTonalIconButton(
-                        onClick = { viewModel.skipToNextTrack() },
-                        modifier = Modifier.size(56.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.SkipNext, 
-                            contentDescription = "Next Track",
-                            modifier = Modifier.size(32.dp)
-                        )
+                    IconButton(onClick = { viewModel.skipToNextTrack() }) {
+                        Icon(Icons.Default.SkipNext, "Next Track")
                     }
                 }
             }
         }
     }
-}
+} 
