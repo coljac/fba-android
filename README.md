@@ -2,21 +2,23 @@
 
 An Android client for freebuddhistaudio.com.
 
-![Screenshot](screen.png)
+![Screenshots](docs/screens.png)
+![Android Auto](docs/auto.png)
 
-Current status: Search works, downloading and playback mostly works, lots of bugs
+Current status: 
+
+- Search, download, favourite talks-
+- Bluetooth, lock screen, etc works
+- Basic android auto (needs work)
 
 TODOs include:
 
-- Fix current breaking bugs
 - Nicer home screen with new talks etc
 - Better podcast support
-- Android Auto support
+- Better Android Auto support
 
 Bugs/enhancements:
-- Incorrect track count for searches
-- Incorrect time display
-- Download progress bar wrong
-- Navigation disappears on search results
-- Player disappears on home page
+- Incorrect talk time display
+- Download progress bar not reporting complete progress
+- Control placement overlaps Android controls on some devices
 
