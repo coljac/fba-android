@@ -38,6 +38,8 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     // Media3 controller bound to our MediaSessionService
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var controller: MediaController? = null
+    // Tracks which talk ID we most recently enqueued into the controller
+    private var queuedTalkId: String? = null
     
     private val _currentTalk = MutableStateFlow<Talk?>(null)
     val currentTalk: StateFlow<Talk?> = _currentTalk
@@ -190,10 +192,26 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
             currentTrack = talk.tracks.getOrNull(validTrackIndex),
             isPlaying = true
         )
+        queuedTalkId = talk.id
 
         viewModelScope.launch {
             repository.addToRecentPlays(talk)
             loadRecentPlays()
+        }
+    }
+
+    // Called from Talk detail main Play/Pause button. If the displayed talk
+    // is not the one currently queued, begin playback of this talk from start.
+    // Otherwise, just toggle play/pause.
+    fun playOrToggleCurrentTalk() {
+        val talk = _currentTalk.value ?: return
+        val c = ensureControllerReady() ?: return
+        val isSameQueuedTalk = queuedTalkId == talk.id && c.mediaItemCount > 0
+        Log.d(TAG, "playOrToggleCurrentTalk sameQueued=$isSameQueuedTalk queuedTalkId=$queuedTalkId currentTalkId=${talk.id}")
+        if (isSameQueuedTalk) {
+            togglePlayPause()
+        } else {
+            playTalk(talk, 0)
         }
     }
     

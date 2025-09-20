@@ -180,7 +180,7 @@ fun TalkDetailScreen(
                             Icon(Icons.Default.Replay10, "Skip Back 10 Seconds")
                         }
                         FilledIconButton(
-                            onClick = { viewModel.togglePlayPause() }
+                            onClick = { viewModel.playOrToggleCurrentTalk() }
                         ) {
                             Icon(
                                 if (playbackState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
