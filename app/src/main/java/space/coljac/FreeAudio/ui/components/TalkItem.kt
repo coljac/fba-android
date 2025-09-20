@@ -17,13 +17,14 @@ import space.coljac.FreeAudio.data.Talk
 @Composable
 fun TalkItem(
     talk: Talk,
+    onClick: (Talk) -> Unit,
     onPlayClick: (Talk) -> Unit
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
-            .clickable { onPlayClick(talk) }
+            .clickable { onClick(talk) }
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
@@ -74,4 +75,4 @@ fun TalkItem(
             }
         }
     }
-} 
+}

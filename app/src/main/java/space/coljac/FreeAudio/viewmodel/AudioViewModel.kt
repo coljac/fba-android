@@ -1,15 +1,17 @@
 package space.coljac.FreeAudio.viewmodel
 
 import android.app.Application
-import android.content.Intent
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import com.google.common.util.concurrent.ListenableFuture
+import com.google.common.util.concurrent.MoreExecutors
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -19,8 +21,8 @@ import space.coljac.FreeAudio.data.Talk
 import space.coljac.FreeAudio.data.Track
 import space.coljac.FreeAudio.network.FBAService
 import space.coljac.FreeAudio.data.TalkRepository
-import java.io.File
 import android.net.Uri
+import space.coljac.FreeAudio.playback.AudioService
 
 private const val TAG = "AudioViewModel"
 
@@ -33,9 +35,9 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     private val _isUpdatingSearchResults = MutableStateFlow(false)
     val isUpdatingSearchResults: StateFlow<Boolean> = _isUpdatingSearchResults
     
-    // No need to expose viewModelScope, we'll use a different approach
-    
-    private var player: ExoPlayer? = null
+    // Media3 controller bound to our MediaSessionService
+    private var controllerFuture: ListenableFuture<MediaController>? = null
+    private var controller: MediaController? = null
     
     private val _currentTalk = MutableStateFlow<Talk?>(null)
     val currentTalk: StateFlow<Talk?> = _currentTalk
@@ -74,6 +76,7 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         loadDownloadedTalks()
         loadFavorites()
         loadRecentPlays()
+        initializeController()
     }
     
     private fun loadRecentPlays() {
@@ -135,68 +138,95 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     }
     
     fun playTalk(talk: Talk, startTrackIndex: Int = 0) {
+        Log.d(TAG, "playTalk(talkId=${talk.id}, requestedIndex=$startTrackIndex, tracks=${talk.tracks.size})")
         setCurrentTalk(talk)
-        initializePlayer()
-        
-        player?.run {
-            val mediaItems = talk.tracks.map { track ->
-                val localPath = repository.getLocalTalkPath(talk.id, track.number)
-                val uri = if (localPath != null) {
-                    Uri.parse("file://$localPath")
-                } else {
-                    Uri.parse(track.path)
-                }
-                
-                // Create rich metadata for the media session and lock screen controls
-                MediaItem.Builder()
-                    .setUri(uri)
-                    .setMediaMetadata(
-                        androidx.media3.common.MediaMetadata.Builder()
-                            .setTitle(track.title)
-                            .setArtist(talk.speaker)
-                            .setAlbumTitle(talk.title)
-                            .setArtworkUri(Uri.parse(talk.imageUrl))
-                            .setDisplayTitle(track.title)
-                            .setSubtitle(talk.speaker)
-                            // Note: We're keeping it simpler for compatibility
-                            .build()
-                    )
-                    .build()
+        val c = ensureControllerReady() ?: return
+
+        // If we're already playing the same talk with the same queue size, avoid rebuilding
+        val sameTalk = _currentTalk.value?.id == talk.id
+        if (sameTalk && c.mediaItemCount == talk.tracks.size) {
+            val desiredIndex = if (talk.tracks.isNotEmpty()) startTrackIndex.coerceIn(0, talk.tracks.size - 1) else 0
+            if (c.currentMediaItemIndex == desiredIndex) {
+                Log.d(TAG, "Same talk and index; resuming without rebuilding queue")
+                c.play()
+                updatePlaybackState()
+                return
             }
-            
-            // Set media items and prepare the player
-            setMediaItems(mediaItems)
-            
-            // Set the initial track (only if we have tracks)
-            if (talk.tracks.isNotEmpty()) {
-                val validTrackIndex = startTrackIndex.coerceIn(0, talk.tracks.size - 1)
-                if (validTrackIndex > 0) {
-                    seekTo(validTrackIndex, 0)
-                }
-                
-                // Update current track in playback state
-                _playbackState.value = _playbackState.value.copy(
-                    currentTrackIndex = validTrackIndex,
-                    currentTrack = talk.tracks[validTrackIndex]
-                )
-            }
-            
-            prepare()
-            
-            // Start audio service explicitly to ensure media playback controls work
-            startAudioService()
         }
-        
+
+        val mediaItems = talk.tracks.map { track ->
+            val localPath = repository.getLocalTalkPath(talk.id, track.number)
+            val uri = if (localPath != null) {
+                Uri.parse("file://$localPath")
+            } else {
+                Uri.parse(track.path)
+            }
+            Log.d(TAG, "Queue item: #${track.number} '${track.title}' uri=$uri")
+
+            MediaItem.Builder()
+                .setUri(uri)
+                .setMediaMetadata(
+                    androidx.media3.common.MediaMetadata.Builder()
+                        .setTitle(track.title)
+                        .setArtist(talk.speaker)
+                        .setAlbumTitle(talk.title)
+                        .setArtworkUri(Uri.parse(talk.imageUrl))
+                        .setDisplayTitle(track.title)
+                        .setSubtitle(talk.speaker)
+                        .build()
+                )
+                .build()
+        }
+
+        val validTrackIndex = if (talk.tracks.isNotEmpty()) startTrackIndex.coerceIn(0, talk.tracks.size - 1) else 0
+        Log.d(TAG, "Setting media items (count=${mediaItems.size}) startIndex=$validTrackIndex")
+        c.setMediaItems(mediaItems, validTrackIndex, 0)
+        c.prepare()
+        c.play()
+        Log.d(TAG, "Called play(); controllerIndex=${c.currentMediaItemIndex}")
+
+        _playbackState.value = _playbackState.value.copy(
+            currentTrackIndex = validTrackIndex,
+            currentTrack = talk.tracks.getOrNull(validTrackIndex),
+            isPlaying = true
+        )
+
         viewModelScope.launch {
             repository.addToRecentPlays(talk)
-            loadRecentPlays() // Use our centralized loading function
+            loadRecentPlays()
         }
     }
     
-    private fun startAudioService() {
-        val context = getApplication<Application>().applicationContext
-        val intent = Intent(context, Class.forName("space.coljac.FreeAudio.playback.AudioService"))
-        context.startService(intent)
+    private fun initializeController() {
+        if (controllerFuture != null) return
+        val context = getApplication<Application>()
+        val sessionToken = SessionToken(context, android.content.ComponentName(context, AudioService::class.java))
+        controllerFuture = MediaController.Builder(context, sessionToken).buildAsync()
+        controllerFuture?.addListener({
+            try {
+                controller = controllerFuture?.get()
+                controller?.addListener(object : Player.Listener {
+                    override fun onIsPlayingChanged(isPlaying: Boolean) {
+                        _playbackState.value = _playbackState.value.copy(isPlaying = isPlaying)
+                        if (isPlaying) startProgressUpdates() else stopProgressUpdates()
+                        Log.d(TAG, "onIsPlayingChanged=$isPlaying index=${controller?.currentMediaItemIndex}")
+                    }
+
+                    override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                        Log.d(TAG, "onMediaItemTransition reason=$reason index=${controller?.currentMediaItemIndex} title=${mediaItem?.mediaMetadata?.title}")
+                        updatePlaybackState()
+                    }
+
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        Log.d(TAG, "onPlaybackStateChanged state=$playbackState index=${controller?.currentMediaItemIndex}")
+                        updatePlaybackState()
+                    }
+                })
+                updatePlaybackState()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error creating MediaController", e)
+            }
+        }, MoreExecutors.directExecutor())
     }
     
     fun setCurrentTalk(talk: Talk) {
@@ -207,124 +237,53 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun togglePlayPause() {
-        player?.let {
-            // Start the service first to ensure it's running
-            startAudioService()
-            
-            val context = getApplication<Application>().applicationContext
-            val intent = Intent(context, Class.forName("space.coljac.FreeAudio.playback.AudioService"))
-            
-            if (it.isPlaying) {
-                // Send pause command to the service
-                intent.action = "ACTION_PAUSE"
-                context.startService(intent)
-                
-                it.pause()
-                _playbackState.value = _playbackState.value.copy(isPlaying = false)
-            } else {
-                // Send play command to the service
-                intent.action = "ACTION_PLAY"
-                context.startService(intent)
-                
-                it.play()
-                _playbackState.value = _playbackState.value.copy(isPlaying = true)
-            }
-            
-            // Update all aspects of playback state for consistency
-            updatePlaybackState()
+        val c = ensureControllerReady() ?: return
+        if (c.isPlaying) {
+            c.pause()
+        } else {
+            c.play()
         }
+        updatePlaybackState()
     }
     
     fun playTrack(trackIndex: Int) {
-        _currentTalk.value?.let { talk ->
-            // First check if there are any tracks to play
-            if (talk.tracks.isEmpty()) {
-                Log.w(TAG, "Attempted to play track but talk has no tracks")
-                return@let
-            }
-            
-            if (trackIndex >= 0 && trackIndex < talk.tracks.size) {
-                // If player is already initialized with this talk
-                if (player?.mediaItemCount == talk.tracks.size) {
-                    player?.seekTo(trackIndex, 0)
-                    player?.play()
-                    
-                    // Send play command to service
-                    val context = getApplication<Application>().applicationContext
-                    val intent = Intent(context, Class.forName("space.coljac.FreeAudio.playback.AudioService"))
-                    intent.action = "ACTION_PLAY"
-                    context.startService(intent)
-                    
-                    updatePlaybackState()
-                } else {
-                    // Initialize player with this talk starting at the selected track
-                    playTalk(talk, trackIndex)
-                }
-            } else {
-                Log.w(TAG, "Invalid track index: $trackIndex (valid range is 0-${talk.tracks.size - 1})")
-            }
-        }
+        val talk = _currentTalk.value ?: return
+        val c = ensureControllerReady() ?: return
+        if (talk.tracks.isEmpty()) return
+        // Always (re)build the playlist for this talk and start at the selected index.
+        // This avoids cases where an identical item count from a previous queue causes
+        // us to seek within the wrong playlist or default to the first item.
+        playTalk(talk, trackIndex)
     }
 
     fun seekForward() {
-        startAudioService()
-        
-        // Send command to service
-        val context = getApplication<Application>().applicationContext
-        val intent = Intent(context, Class.forName("space.coljac.FreeAudio.playback.AudioService"))
-        intent.action = "ACTION_SKIP_FORWARD"
-        context.startService(intent)
-        
-        // Update local player - seek forward 10 seconds
-        player?.let { 
-            val newPosition = it.currentPosition + 10000
-            it.seekTo(newPosition)
-        }
+        val c = ensureControllerReady() ?: return
+        c.seekTo(c.currentPosition + 10_000)
         updatePlaybackState()
     }
 
     fun seekBackward() {
-        startAudioService()
-        
-        // Send command to service
-        val context = getApplication<Application>().applicationContext
-        val intent = Intent(context, Class.forName("space.coljac.FreeAudio.playback.AudioService"))
-        intent.action = "ACTION_SKIP_BACKWARD"
-        context.startService(intent)
-        
-        // Update local player - seek backward 10 seconds
-        player?.let {
-            val newPosition = (it.currentPosition - 10000).coerceAtLeast(0)
-            it.seekTo(newPosition)
-        }
+        val c = ensureControllerReady() ?: return
+        val newPosition = (c.currentPosition - 10_000).coerceAtLeast(0)
+        c.seekTo(newPosition)
+        updatePlaybackState()
+    }
+
+    fun seekTo(positionMs: Long) {
+        val c = ensureControllerReady() ?: return
+        c.seekTo(positionMs)
         updatePlaybackState()
     }
 
     fun skipToNextTrack() {
-        startAudioService()
-        
-        // Send command to service
-        val context = getApplication<Application>().applicationContext
-        val intent = Intent(context, Class.forName("space.coljac.FreeAudio.playback.AudioService"))
-        intent.action = "ACTION_NEXT"
-        context.startService(intent)
-        
-        // Update local player
-        player?.seekToNextMediaItem()
+        val c = ensureControllerReady() ?: return
+        c.seekToNextMediaItem()
         updatePlaybackState()
     }
 
     fun skipToPreviousTrack() {
-        startAudioService()
-        
-        // Send command to service
-        val context = getApplication<Application>().applicationContext
-        val intent = Intent(context, Class.forName("space.coljac.FreeAudio.playback.AudioService"))
-        intent.action = "ACTION_PREVIOUS"
-        context.startService(intent)
-        
-        // Update local player
-        player?.seekToPreviousMediaItem()
+        val c = ensureControllerReady() ?: return
+        c.seekToPreviousMediaItem()
         updatePlaybackState()
     }
 
@@ -488,134 +447,53 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     }
     
     override fun onCleared() {
-        stopAudioService()
-        player?.release()
-        player = null
+        controller?.release()
+        controller = null
+        controllerFuture = null
         super.onCleared()
     }
     
-    private fun stopAudioService() {
-        // Stop the media service when the ViewModel is cleared
-        try {
-            val context = getApplication<Application>().applicationContext
-            val intent = Intent(context, Class.forName("space.coljac.FreeAudio.playback.AudioService"))
-            context.stopService(intent)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error stopping service", e)
-        }
+    private fun ensureControllerReady(): MediaController? {
+        if (controller != null) return controller
+        initializeController()
+        return controller
     }
 
-    private fun initializePlayer() {
-        if (player == null) {
-            player = ExoPlayer.Builder(getApplication()).build().apply {
-                addListener(object : Player.Listener {
-                    override fun onIsPlayingChanged(isPlaying: Boolean) {
-                        _playbackState.value = _playbackState.value.copy(isPlaying = isPlaying)
-                    }
-
-                    override fun onPositionDiscontinuity(
-                        oldPosition: Player.PositionInfo,
-                        newPosition: Player.PositionInfo,
-                        reason: Int
-                    ) {
-                        updatePlaybackState()
-                    }
-                    
-                    override fun onPlaybackStateChanged(playbackState: Int) {
-                        updatePlaybackState()
-                    }
-                    
-                    override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                        updatePlaybackState()
-                    }
-                })
+    private var progressJob: Job? = null
+    private fun startProgressUpdates() {
+        if (progressJob != null) return
+        progressJob = viewModelScope.launch {
+            while (controller?.isPlaying == true) {
+                updatePlaybackState()
+                delay(500)
             }
+            progressJob = null
         }
+    }
+    private fun stopProgressUpdates() {
+        progressJob?.cancel()
+        progressJob = null
     }
     
-    /**
-     * Method to synchronize playback state with the service
-     * This allows Bluetooth and lock screen controls to correctly sync with the UI
-     */
-    fun syncPlaybackState(isPlaying: Boolean) {
-        Log.d(TAG, "Syncing external playback state change: isPlaying=$isPlaying")
-        
-        // Update local player state if there's a mismatch
-        player?.let { exoPlayer ->
-            Log.d(TAG, "Current local player state: isPlaying=${exoPlayer.isPlaying}, " +
-                      "playWhenReady=${exoPlayer.playWhenReady}, " +
-                      "playbackState=${playbackStateToString(exoPlayer.playbackState)}")
-            
-            if (exoPlayer.isPlaying != isPlaying) {
-                try {
-                    if (isPlaying) {
-                        // Use multiple methods to ensure playback starts
-                        Log.d(TAG, "Starting playback in local player")
-                        
-                        // Make sure we're prepared
-                        if (exoPlayer.playbackState == Player.STATE_IDLE) {
-                            exoPlayer.prepare()
-                        }
-                        
-                        // Method 1: Use play()
-                        exoPlayer.play()
-                        
-                        // Method 2: Set playWhenReady directly
-                        exoPlayer.playWhenReady = true
-                    } else {
-                        // Use multiple methods to ensure playback stops
-                        Log.d(TAG, "Pausing playback in local player")
-                        
-                        // Method 1: Use pause()
-                        exoPlayer.pause()
-                        
-                        // Method 2: Set playWhenReady directly
-                        exoPlayer.playWhenReady = false
-                    }
-                    
-                    // Force update UI state immediately
-                    _playbackState.value = _playbackState.value.copy(isPlaying = isPlaying)
-                    
-                    // Re-check after a delay to ensure the state actually changed
-                    Handler(Looper.getMainLooper()).postDelayed({
-                        Log.d(TAG, "Verifying player state change: local player isPlaying=${exoPlayer.isPlaying}")
-                        _playbackState.value = _playbackState.value.copy(isPlaying = exoPlayer.isPlaying)
-                    }, 200)
-                    
-                    Log.d(TAG, "Local player state updated to match service: isPlaying=$isPlaying")
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error syncing playback state", e)
-                }
-            }
-        }
-    }
-    
-    // Helper to convert player state to string for logging
-    private fun playbackStateToString(state: Int): String {
-        return when (state) {
-            Player.STATE_IDLE -> "STATE_IDLE"
-            Player.STATE_BUFFERING -> "STATE_BUFFERING"
-            Player.STATE_READY -> "STATE_READY"
-            Player.STATE_ENDED -> "STATE_ENDED"
-            else -> "UNKNOWN"
-        }
-    }
+    // Media3-only: no compat sync
     
     private fun updatePlaybackState() {
-        player?.let { exoPlayer ->
-            // Get the current track based on the media item index
+        controller?.let { c ->
             val currentTrack = _currentTalk.value?.let { talk ->
-                val index = exoPlayer.currentMediaItemIndex
+                val index = c.currentMediaItemIndex
                 if (index >= 0 && index < talk.tracks.size) talk.tracks[index] else null
             }
-            
             _playbackState.value = _playbackState.value.copy(
-                isPlaying = exoPlayer.isPlaying,
-                currentTrackIndex = exoPlayer.currentMediaItemIndex,
-                position = exoPlayer.currentPosition,
-                duration = exoPlayer.duration,
+                isPlaying = c.isPlaying,
+                currentTrackIndex = c.currentMediaItemIndex,
+                position = c.currentPosition,
+                duration = c.duration,
                 currentTrack = currentTrack
+            )
+            Log.d(
+                TAG,
+                "updatePlaybackState isPlaying=${c.isPlaying} index=${c.currentMediaItemIndex} position=${c.currentPosition} duration=${c.duration} title='${currentTrack?.title}'"
             )
         }
     }
-} 
+}

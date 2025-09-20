@@ -58,6 +58,7 @@ fun DownloadedScreen(
                     ) {
                         TalkItem(
                             talk = talk,
+                            onClick = { onTalkSelected(it) },
                             onPlayClick = { 
                                 viewModel.playTalk(it)
                                 onTalkSelected(it)

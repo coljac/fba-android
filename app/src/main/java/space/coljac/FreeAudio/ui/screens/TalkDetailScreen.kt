@@ -26,10 +26,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.navigationBarsPadding
 import coil.compose.AsyncImage
 import space.coljac.FreeAudio.viewmodel.AudioViewModel
 import space.coljac.FreeAudio.data.Talk
 import space.coljac.FreeAudio.data.Track
+import kotlin.math.max
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -70,7 +72,8 @@ fun TalkDetailScreen(
             )
         },
         bottomBar = {
-            Column {
+            // Respect system navigation bar insets so controls aren't obscured
+            Column(modifier = Modifier.navigationBarsPadding()) {
                 // Download/Favorite Buttons (fixed)
                 Row(
                     modifier = Modifier
@@ -162,33 +165,47 @@ fun TalkDetailScreen(
                     }
                 }
                 // Player Controls (fixed)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 16.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = { viewModel.skipToPreviousTrack() }) {
-                        Icon(Icons.Default.SkipPrevious, "Previous Track")
-                    }
-                    IconButton(onClick = { viewModel.seekBackward() }) {
-                        Icon(Icons.Default.Replay10, "Skip Back 10 Seconds")
-                    }
-                    FilledIconButton(
-                        onClick = { viewModel.togglePlayPause() }
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            if (playbackState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            "Play/Pause"
-                        )
+                        IconButton(onClick = { viewModel.skipToPreviousTrack() }) {
+                            Icon(Icons.Default.SkipPrevious, "Previous Track")
+                        }
+                        IconButton(onClick = { viewModel.seekBackward() }) {
+                            Icon(Icons.Default.Replay10, "Skip Back 10 Seconds")
+                        }
+                        FilledIconButton(
+                            onClick = { viewModel.togglePlayPause() }
+                        ) {
+                            Icon(
+                                if (playbackState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                "Play/Pause"
+                            )
+                        }
+                        IconButton(onClick = { viewModel.seekForward() }) {
+                            Icon(Icons.Default.Forward10, "Skip Forward 10 Seconds")
+                        }
+                        IconButton(onClick = { viewModel.skipToNextTrack() }) {
+                            Icon(Icons.Default.SkipNext, "Next Track")
+                        }
                     }
-                    IconButton(onClick = { viewModel.seekForward() }) {
-                        Icon(Icons.Default.Forward10, "Skip Forward 10 Seconds")
-                    }
-                    IconButton(onClick = { viewModel.skipToNextTrack() }) {
-                        Icon(Icons.Default.SkipNext, "Next Track")
-                    }
+
+                    // Scrubber: always visible; disabled until duration is known
+                    val position = playbackState.position.coerceAtLeast(0)
+                    val duration = max(0L, playbackState.duration)
+                    val sliderMax = max(1f, duration.toFloat())
+                    Slider(
+                        value = position.toFloat().coerceIn(0f, sliderMax),
+                        onValueChange = { newVal -> viewModel.seekTo(newVal.toLong()) },
+                        valueRange = 0f..sliderMax,
+                        enabled = duration > 0L,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
         }
@@ -266,7 +283,10 @@ fun TalkDetailScreen(
                                 track = track,
                                 trackIndex = index,
                                 isPlaying = isCurrentTrack && playbackState.isPlaying,
-                                onClick = { viewModel.playTrack(index) }
+                                onClick = {
+                                    android.util.Log.d("TalkDetailScreen", "Track clicked index=$index talkId=${talk.id}")
+                                    viewModel.playTrack(index)
+                                }
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                         }
@@ -411,4 +431,3 @@ private fun TrackItem(
         }
     }
 }
-

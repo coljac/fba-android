@@ -12,6 +12,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import space.coljac.FreeAudio.data.Talk
 import space.coljac.FreeAudio.viewmodel.AudioViewModel
+import kotlin.math.max
 
 @Composable
 fun BottomPlayerBar(
@@ -35,59 +36,75 @@ fun BottomPlayerBar(
                 .wrapContentHeight(), // Only take the height we need
             tonalElevation = 8.dp
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp) // Slightly smaller height for compactness
-                    .padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                AsyncImage(
-                    model = talk.imageUrl,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .padding(4.dp)
-                )
-                
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 8.dp)
-                ) {
-                    Text(
-                        text = talk.title,
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = talk.speaker,
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = { viewModel.skipToPreviousTrack() }) {
-                        Icon(Icons.Default.SkipPrevious, "Previous")
-                    }
-                    IconButton(onClick = { viewModel.togglePlayPause() }) {
-                        Icon(
-                            if (playbackState.isPlaying) Icons.Default.Pause 
-                            else Icons.Default.PlayArrow,
-                            "Play/Pause"
+                    AsyncImage(
+                        model = talk.imageUrl,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .padding(4.dp)
+                    )
+                    
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 8.dp)
+                    ) {
+                        Text(
+                            text = talk.title,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = talk.speaker,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
-                    IconButton(onClick = { viewModel.skipToNextTrack() }) {
-                        Icon(Icons.Default.SkipNext, "Next")
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = { viewModel.skipToPreviousTrack() }) {
+                            Icon(Icons.Default.SkipPrevious, "Previous")
+                        }
+                        IconButton(onClick = { viewModel.togglePlayPause() }) {
+                            Icon(
+                                if (playbackState.isPlaying) Icons.Default.Pause 
+                                else Icons.Default.PlayArrow,
+                                "Play/Pause"
+                            )
+                        }
+                        IconButton(onClick = { viewModel.skipToNextTrack() }) {
+                            Icon(Icons.Default.SkipNext, "Next")
+                        }
                     }
+                }
+
+                // Scrubber
+                val position = playbackState.position.coerceAtLeast(0)
+                val duration = max(0L, playbackState.duration)
+                if (duration > 0L) {
+                    Slider(
+                        value = position.toFloat().coerceIn(0f, duration.toFloat()),
+                        onValueChange = { newVal ->
+                            // Update locally to feel responsive
+                            viewModel.seekTo(newVal.toLong())
+                        },
+                        valueRange = 0f..duration.toFloat(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
         }
     }
-} 
+}

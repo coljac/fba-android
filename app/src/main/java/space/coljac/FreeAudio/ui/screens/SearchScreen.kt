@@ -83,6 +83,7 @@ fun SearchScreen(
                         ) { talk ->
                             TalkItem(
                                 talk = talk,
+                                onClick = { onTalkSelected(it) },
                                 onPlayClick = { 
                                     viewModel.playTalk(it)
                                     onTalkSelected(it)
