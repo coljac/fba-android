@@ -21,6 +21,8 @@ import space.coljac.FreeAudio.data.Talk
 import space.coljac.FreeAudio.data.Track
 import space.coljac.FreeAudio.network.FBAService
 import space.coljac.FreeAudio.data.TalkRepository
+import space.coljac.FreeAudio.data.PlaybackProgressRepository
+import space.coljac.FreeAudio.data.PlaybackProgress
 import android.net.Uri
 import space.coljac.FreeAudio.playback.AudioService
 
@@ -29,6 +31,7 @@ private const val TAG = "AudioViewModel"
 class AudioViewModel(application: Application) : AndroidViewModel(application) {
     private val fbaService = FBAService()
     private val repository = TalkRepository(application)
+    private val progressRepository = PlaybackProgressRepository(application)
     private val _searchState = MutableStateFlow<SearchState>(SearchState.Empty)
     val searchState: StateFlow<SearchState> = _searchState
     
@@ -139,7 +142,7 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
     
-    fun playTalk(talk: Talk, startTrackIndex: Int = 0) {
+    fun playTalk(talk: Talk, startTrackIndex: Int = 0, startPositionMs: Long = 0) {
         Log.d(TAG, "playTalk(talkId=${talk.id}, requestedIndex=$startTrackIndex, tracks=${talk.tracks.size})")
         setCurrentTalk(talk)
         val c = ensureControllerReady() ?: return
@@ -150,6 +153,9 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
             val desiredIndex = if (talk.tracks.isNotEmpty()) startTrackIndex.coerceIn(0, talk.tracks.size - 1) else 0
             if (c.currentMediaItemIndex == desiredIndex) {
                 Log.d(TAG, "Same talk and index; resuming without rebuilding queue")
+                if (startPositionMs > 0) {
+                    c.seekTo(startPositionMs)
+                }
                 c.play()
                 updatePlaybackState()
                 return
@@ -181,8 +187,8 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         val validTrackIndex = if (talk.tracks.isNotEmpty()) startTrackIndex.coerceIn(0, talk.tracks.size - 1) else 0
-        Log.d(TAG, "Setting media items (count=${mediaItems.size}) startIndex=$validTrackIndex")
-        c.setMediaItems(mediaItems, validTrackIndex, 0)
+        Log.d(TAG, "Setting media items (count=${mediaItems.size}) startIndex=$validTrackIndex startPositionMs=$startPositionMs")
+        c.setMediaItems(mediaItems, validTrackIndex, startPositionMs)
         c.prepare()
         c.play()
         Log.d(TAG, "Called play(); controllerIndex=${c.currentMediaItemIndex}")
@@ -200,6 +206,20 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // New method to resume talk from saved progress
+    fun resumeTalkFromSavedProgress(talk: Talk) {
+        viewModelScope.launch {
+            val savedProgress = progressRepository.getProgress(talk.id)
+            if (savedProgress != null) {
+                Log.d(TAG, "Resuming talk ${talk.id} from saved progress: track ${savedProgress.trackIndex}, position ${savedProgress.positionMs}ms")
+                playTalk(talk, savedProgress.trackIndex, savedProgress.positionMs)
+            } else {
+                Log.d(TAG, "No saved progress for talk ${talk.id}, starting from beginning")
+                playTalk(talk, 0)
+            }
+        }
+    }
+
     // Called from Talk detail main Play/Pause button. If the displayed talk
     // is not the one currently queued, begin playback of this talk from start.
     // Otherwise, just toggle play/pause.
@@ -211,7 +231,7 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         if (isSameQueuedTalk) {
             togglePlayPause()
         } else {
-            playTalk(talk, 0)
+            resumeTalkFromSavedProgress(talk)
         }
     }
     
@@ -226,12 +246,20 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
                 controller?.addListener(object : Player.Listener {
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
                         _playbackState.value = _playbackState.value.copy(isPlaying = isPlaying)
-                        if (isPlaying) startProgressUpdates() else stopProgressUpdates()
+                        if (isPlaying) {
+                            startProgressUpdates()
+                        } else {
+                            stopProgressUpdates()
+                            // Save progress when playback is paused
+                            saveCurrentProgress()
+                        }
                         Log.d(TAG, "onIsPlayingChanged=$isPlaying index=${controller?.currentMediaItemIndex}")
                     }
 
                     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                         Log.d(TAG, "onMediaItemTransition reason=$reason index=${controller?.currentMediaItemIndex} title=${mediaItem?.mediaMetadata?.title}")
+                        // Save progress when track changes
+                        saveCurrentProgress()
                         updatePlaybackState()
                     }
 
@@ -465,6 +493,9 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     }
     
     override fun onCleared() {
+        // Save progress before clearing
+        saveCurrentProgress()
+
         controller?.release()
         controller = null
         controllerFuture = null
@@ -478,13 +509,30 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private var progressJob: Job? = null
+    private var lastProgressSaveTime = 0L
     private fun startProgressUpdates() {
         if (progressJob != null) return
         progressJob = viewModelScope.launch {
+            var updateCount = 0
             while (controller?.isPlaying == true) {
                 updatePlaybackState()
+                updateCount++
+
+                // Save progress every 10 seconds (20 updates at 500ms intervals)
+                if (updateCount >= 20) {
+                    val currentTime = System.currentTimeMillis()
+                    // Avoid saving too frequently - at least 10 seconds apart
+                    if (currentTime - lastProgressSaveTime > 10000) {
+                        saveCurrentProgress()
+                        lastProgressSaveTime = currentTime
+                    }
+                    updateCount = 0
+                }
+
                 delay(500)
             }
+            // Save progress when playback stops
+            saveCurrentProgress()
             progressJob = null
         }
     }
@@ -513,5 +561,29 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
                 "updatePlaybackState isPlaying=${c.isPlaying} index=${c.currentMediaItemIndex} position=${c.currentPosition} duration=${c.duration} title='${currentTrack?.title}'"
             )
         }
+    }
+
+    private fun saveCurrentProgress() {
+        val talk = _currentTalk.value ?: return
+        val c = controller ?: return
+
+        // Only save progress if we have a meaningful position (more than 5 seconds)
+        val position = c.currentPosition
+        if (position > 5000) {
+            val progress = PlaybackProgress(
+                talkId = talk.id,
+                trackIndex = c.currentMediaItemIndex,
+                positionMs = position
+            )
+
+            viewModelScope.launch {
+                progressRepository.saveProgress(progress)
+            }
+        }
+    }
+
+    fun pauseAndSaveProgress() {
+        saveCurrentProgress()
+        togglePlayPause()
     }
 }

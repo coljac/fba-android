@@ -1,7 +1,10 @@
 package space.coljac.FreeAudio.playback
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
+import android.os.Build
 import android.util.Log
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -11,8 +14,11 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import space.coljac.FreeAudio.MainActivity
+import space.coljac.FreeAudio.R
 
 private const val TAG = "AudioService"
+private const val NOTIFICATION_CHANNEL_ID = "fba_playback_channel"
+private const val NOTIFICATION_CHANNEL_NAME = "Audio Playback"
 
 @UnstableApi
 class AudioService : MediaSessionService() {
@@ -23,7 +29,10 @@ class AudioService : MediaSessionService() {
         super.onCreate()
         Log.d(TAG, "AudioService onCreate")
 
-        // Initialize ExoPlayer
+        // Create notification channel for Android O and above
+        createNotificationChannel()
+
+        // Initialize ExoPlayer with wake lock to prevent sleep during playback
         player = ExoPlayer.Builder(this)
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -33,6 +42,7 @@ class AudioService : MediaSessionService() {
                 true
             )
             .setHandleAudioBecomingNoisy(true)
+            .setWakeMode(C.WAKE_MODE_NETWORK) // Keep CPU awake during playback
             .build()
 
         // Create MediaSession
@@ -62,6 +72,23 @@ class AudioService : MediaSessionService() {
                 Log.d(TAG, "Service onPlaybackStateChanged state=$playbackState index=${player.currentMediaItemIndex}")
             }
         })
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                NOTIFICATION_CHANNEL_ID,
+                NOTIFICATION_CHANNEL_NAME,
+                NotificationManager.IMPORTANCE_LOW // Low importance to avoid intrusive notifications
+            ).apply {
+                description = "Controls for audio playback"
+                setShowBadge(false)
+            }
+
+            val notificationManager = getSystemService(NotificationManager::class.java)
+            notificationManager?.createNotificationChannel(channel)
+            Log.d(TAG, "Notification channel created")
+        }
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {

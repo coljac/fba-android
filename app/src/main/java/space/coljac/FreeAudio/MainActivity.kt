@@ -1,7 +1,12 @@
 package space.coljac.FreeAudio
 
+import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.JsonObject
@@ -28,6 +33,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Check and request battery optimization exemption
+        checkBatteryOptimization()
 
         // Ensure the MediaSessionService is started so the controller can connect
         try {
@@ -140,5 +148,27 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         // Nothing to release here
+    }
+
+    /**
+     * Check if the app is exempted from battery optimization.
+     * If not, log a warning. This helps prevent the service from being killed.
+     */
+    private fun checkBatteryOptimization() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val packageName = packageName
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+
+            if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+                Log.w(TAG, "App is NOT exempted from battery optimization. " +
+                        "This may cause playback to stop when the screen is off. " +
+                        "User can manually exempt the app in Settings > Apps > Free Buddhist Audio > Battery > Unrestricted")
+
+                // Note: We're not automatically requesting exemption to avoid being too intrusive
+                // Users can manually enable it if needed, or you could add a button in settings
+            } else {
+                Log.d(TAG, "App is exempted from battery optimization - playback should continue in background")
+            }
+        }
     }
 }
