@@ -298,31 +298,61 @@ class TalkRepository(private val context: Context) {
 
     suspend fun getTalkById(talkId: String): Talk? = withContext(Dispatchers.IO) {
         Log.d(TAG, "Getting talk by ID: $talkId")
-        
+
+        // Check if this is a series (starts with X)
+        val isSeries = talkId.startsWith("X")
+
+        if (isSeries) {
+            // Fetch series details directly from network
+            Log.d(TAG, "ID $talkId appears to be a series, fetching series details")
+            try {
+                val seriesTalk = fbaService.getSeriesDetails(talkId)
+                if (seriesTalk != null) {
+                    val isFavorite = isFavorite(talkId)
+                    val updatedTalk = seriesTalk.copy(isFavorite = isFavorite)
+
+                    // Save metadata if favorited
+                    if (isFavorite) {
+                        saveTalkMetadataForFavorite(updatedTalk)
+                    }
+
+                    Log.d(TAG, "Returning series with ${updatedTalk.seriesMembers.size} members")
+                    return@withContext updatedTalk
+                } else {
+                    Log.e(TAG, "Failed to fetch series details for $talkId")
+                    return@withContext null
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error fetching series details: ${e.message}")
+                return@withContext null
+            }
+        }
+
+        // Regular talk handling
         // First check if we need to fetch updated track details
         var shouldFetchFromNetwork = true
-        
+
         // First check in the main directory for downloaded talks
         val downloadedMetadataFile = File(talksDirectory, "$talkId.json")
-        
+
         // Then check the metadata directory for favorited talks
         val favoriteMetadataFile = File(metadataDirectory, "$talkId.json")
-        
+
         // Use the downloaded file if available, otherwise use the favorite metadata
         val metadataFile = if (downloadedMetadataFile.exists()) downloadedMetadataFile else favoriteMetadataFile
-        
+
         val localTalk = if (metadataFile.exists()) {
             try {
                 Log.d(TAG, "Found local metadata for talk $talkId in ${metadataFile.absolutePath}")
                 val talk = gson.fromJson(metadataFile.readText(), Talk::class.java)
-                
+
                 // Check if this talk has detailed track information
-                shouldFetchFromNetwork = talk.tracks.isEmpty() || 
+                shouldFetchFromNetwork = talk.tracks.isEmpty() ||
                     talk.tracks.firstOrNull()?.trackId.isNullOrEmpty() ||
                     talk.tracks.firstOrNull()?.durationSeconds == 0
-                
+
                 Log.d(TAG, "Talk $talkId has ${talk.tracks.size} tracks locally, shouldFetchFromNetwork=$shouldFetchFromNetwork")
-                
+
                 // Check if this talk is a favorite
                 val isFavorite = isFavorite(talkId)
                 talk.copy(isFavorite = isFavorite)
@@ -334,26 +364,26 @@ class TalkRepository(private val context: Context) {
             Log.d(TAG, "No local metadata found for talk $talkId")
             null
         }
-        
+
         // If we don't have the talk locally or we need updated track details, fetch from network
         if (localTalk == null || shouldFetchFromNetwork) {
             try {
                 Log.d(TAG, "Fetching talk details from network for talk $talkId")
                 val networkTalk = fbaService.getTalkDetails(talkId)
-                
+
                 if (networkTalk != null) {
                     Log.d(TAG, "Received network talk with ID: $talkId, tracks: ${networkTalk.tracks.size}")
-                    
+
                     // Update with favorite status from local data
                     val isFavorite = isFavorite(talkId)
                     val updatedTalk = networkTalk.copy(isFavorite = isFavorite)
-                    
+
                     // Save the updated metadata
                     saveTalkMetadata(updatedTalk)
                     if (isFavorite) {
                         saveTalkMetadataForFavorite(updatedTalk)
                     }
-                    
+
                     Log.d(TAG, "Returning updated talk with ${updatedTalk.tracks.size} tracks")
                     return@withContext updatedTalk
                 } else {
@@ -366,7 +396,7 @@ class TalkRepository(private val context: Context) {
         } else {
             Log.d(TAG, "Using local talk data, not fetching from network")
         }
-        
+
         Log.d(TAG, "Returning local talk with ${localTalk?.tracks?.size ?: 0} tracks")
         return@withContext localTalk
     }

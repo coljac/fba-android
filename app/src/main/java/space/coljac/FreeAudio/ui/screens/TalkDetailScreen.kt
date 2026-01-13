@@ -31,6 +31,7 @@ import coil.compose.AsyncImage
 import space.coljac.FreeAudio.viewmodel.AudioViewModel
 import space.coljac.FreeAudio.data.Talk
 import space.coljac.FreeAudio.data.Track
+import space.coljac.FreeAudio.data.SeriesMember
 import kotlin.math.max
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -38,7 +39,8 @@ import kotlin.math.max
 fun TalkDetailScreen(
     viewModel: AudioViewModel,
     talkId: String,
-    onNavigateUp: () -> Unit
+    onNavigateUp: () -> Unit,
+    onNavigateToTalk: (String) -> Unit = {}
 ) {
     var showDeleteConfirmation by remember { mutableStateOf(false) }
 
@@ -74,138 +76,175 @@ fun TalkDetailScreen(
         bottomBar = {
             // Respect system navigation bar insets so controls aren't obscured
             Column(modifier = Modifier.navigationBarsPadding()) {
-                // Download/Favorite Buttons (fixed)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = {
-                            currentTalk?.let { talk ->
-                                if (isDownloaded) {
-                                    showDeleteConfirmation = true
-                                } else if (downloadProgress == null) {
-                                    viewModel.downloadTalk(talk)
-                                }
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                        enabled = downloadProgress == null,
-                        colors = if (isDownloaded) {
-                            ButtonDefaults.outlinedButtonColors(
-                                contentColor = MaterialTheme.colorScheme.error
-                            )
-                        } else {
-                            ButtonDefaults.outlinedButtonColors()
-                        }
-                    ) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            when {
-                                downloadProgress != null -> {
-                                    LinearProgressIndicator(
-                                        progress = downloadProgress ?: 0f,
-                                        modifier = Modifier
-                                            .width(24.dp)
-                                            .height(2.dp)
-                                    )
-                                    Text(
-                                        "Downloading ${(downloadProgress?.times(100))?.toInt()}%",
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                }
-                                isDownloaded -> {
-                                    Icon(
-                                        Icons.Default.Delete,
-                                        "Remove Download",
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Text("Remove")
-                                }
-                                else -> {
-                                    Icon(
-                                        Icons.Default.Download,
-                                        "Download",
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Text("Download")
-                                }
-                            }
-                        }
-                    }
-
-                    OutlinedButton(
-                        onClick = { currentTalk?.let { viewModel.toggleFavorite(it) } },
-                        modifier = Modifier.weight(1f),
-                        colors = if (currentTalk?.isFavorite == true) {
-                            ButtonDefaults.outlinedButtonColors(
-                                contentColor = MaterialTheme.colorScheme.primary
-                            )
-                        } else {
-                            ButtonDefaults.outlinedButtonColors()
-                        }
-                    ) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = if (currentTalk?.isFavorite == true)
-                                    Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                contentDescription = if (currentTalk?.isFavorite == true)
-                                    "Remove from Favorites" else "Add to Favorites",
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(if (currentTalk?.isFavorite == true) "Favorited" else "Favorite")
-                        }
-                    }
-                }
-                // Player Controls (fixed)
-                Column(modifier = Modifier.fillMaxWidth()) {
+                // Only show download button for non-series talks
+                if (currentTalk?.isSeries != true) {
+                    // Download/Favorite Buttons (fixed)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 16.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        IconButton(onClick = { viewModel.skipToPreviousTrack() }) {
-                            Icon(Icons.Default.SkipPrevious, "Previous Track")
-                        }
-                        IconButton(onClick = { viewModel.seekBackward() }) {
-                            Icon(Icons.Default.Replay10, "Skip Back 10 Seconds")
-                        }
-                        FilledIconButton(
-                            onClick = { viewModel.playOrToggleCurrentTalk() }
+                        OutlinedButton(
+                            onClick = {
+                                currentTalk?.let { talk ->
+                                    if (isDownloaded) {
+                                        showDeleteConfirmation = true
+                                    } else if (downloadProgress == null) {
+                                        viewModel.downloadTalk(talk)
+                                    }
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            enabled = downloadProgress == null,
+                            colors = if (isDownloaded) {
+                                ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.error
+                                )
+                            } else {
+                                ButtonDefaults.outlinedButtonColors()
+                            }
                         ) {
-                            Icon(
-                                if (playbackState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                "Play/Pause"
-                            )
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                when {
+                                    downloadProgress != null -> {
+                                        LinearProgressIndicator(
+                                            progress = downloadProgress ?: 0f,
+                                            modifier = Modifier
+                                                .width(24.dp)
+                                                .height(2.dp)
+                                        )
+                                        Text(
+                                            "Downloading ${(downloadProgress?.times(100))?.toInt()}%",
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                    isDownloaded -> {
+                                        Icon(
+                                            Icons.Default.Delete,
+                                            "Remove Download",
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text("Remove")
+                                    }
+                                    else -> {
+                                        Icon(
+                                            Icons.Default.Download,
+                                            "Download",
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text("Download")
+                                    }
+                                }
+                            }
                         }
-                        IconButton(onClick = { viewModel.seekForward() }) {
-                            Icon(Icons.Default.Forward10, "Skip Forward 10 Seconds")
-                        }
-                        IconButton(onClick = { viewModel.skipToNextTrack() }) {
-                            Icon(Icons.Default.SkipNext, "Next Track")
+
+                        OutlinedButton(
+                            onClick = { currentTalk?.let { viewModel.toggleFavorite(it) } },
+                            modifier = Modifier.weight(1f),
+                            colors = if (currentTalk?.isFavorite == true) {
+                                ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.primary
+                                )
+                            } else {
+                                ButtonDefaults.outlinedButtonColors()
+                            }
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = if (currentTalk?.isFavorite == true)
+                                        Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                    contentDescription = if (currentTalk?.isFavorite == true)
+                                        "Remove from Favorites" else "Add to Favorites",
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(if (currentTalk?.isFavorite == true) "Favorited" else "Favorite")
+                            }
                         }
                     }
+                    // Player Controls (fixed) - only for non-series
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 16.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(onClick = { viewModel.skipToPreviousTrack() }) {
+                                Icon(Icons.Default.SkipPrevious, "Previous Track")
+                            }
+                            IconButton(onClick = { viewModel.seekBackward() }) {
+                                Icon(Icons.Default.Replay10, "Skip Back 10 Seconds")
+                            }
+                            FilledIconButton(
+                                onClick = { viewModel.playOrToggleCurrentTalk() }
+                            ) {
+                                Icon(
+                                    if (playbackState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                    "Play/Pause"
+                                )
+                            }
+                            IconButton(onClick = { viewModel.seekForward() }) {
+                                Icon(Icons.Default.Forward10, "Skip Forward 10 Seconds")
+                            }
+                            IconButton(onClick = { viewModel.skipToNextTrack() }) {
+                                Icon(Icons.Default.SkipNext, "Next Track")
+                            }
+                        }
 
-                    // Scrubber: always visible; disabled until duration is known
-                    val position = playbackState.position.coerceAtLeast(0)
-                    val duration = max(0L, playbackState.duration)
-                    val sliderMax = max(1f, duration.toFloat())
-                    Slider(
-                        value = position.toFloat().coerceIn(0f, sliderMax),
-                        onValueChange = { newVal -> viewModel.seekTo(newVal.toLong()) },
-                        valueRange = 0f..sliderMax,
-                        enabled = duration > 0L,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                        // Scrubber: always visible; disabled until duration is known
+                        val position = playbackState.position.coerceAtLeast(0)
+                        val duration = max(0L, playbackState.duration)
+                        val sliderMax = max(1f, duration.toFloat())
+                        Slider(
+                            value = position.toFloat().coerceIn(0f, sliderMax),
+                            onValueChange = { newVal -> viewModel.seekTo(newVal.toLong()) },
+                            valueRange = 0f..sliderMax,
+                            enabled = duration > 0L,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                } else {
+                    // For series, only show favorite button
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(8.dp),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        OutlinedButton(
+                            onClick = { currentTalk?.let { viewModel.toggleFavorite(it) } },
+                            modifier = Modifier.fillMaxWidth(0.5f),
+                            colors = if (currentTalk?.isFavorite == true) {
+                                ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.primary
+                                )
+                            } else {
+                                ButtonDefaults.outlinedButtonColors()
+                            }
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = if (currentTalk?.isFavorite == true)
+                                        Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                    contentDescription = if (currentTalk?.isFavorite == true)
+                                        "Remove from Favorites" else "Add to Favorites",
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(if (currentTalk?.isFavorite == true) "Favorited" else "Favorite")
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -260,35 +299,66 @@ fun TalkDetailScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                if (talk.tracks.isNotEmpty()) {
+                if (talk.isSeries) {
+                    // Show series members
                     Text(
-                        text = "Tracks (${talk.tracks.size})",
+                        text = "Talks in this Series (${talk.seriesMembers.size})",
                         style = MaterialTheme.typography.titleMedium
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                }
 
-                // Scrollable Track List taking up available space
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .verticalScroll(rememberScrollState())
-                ) {
-                    Column {
-                        talk.tracks.forEachIndexed { index, track ->
-                            val isCurrentTrack =
-                                playbackState.currentTrackIndex == index &&
-                                currentTalk?.id == talk.id
-                            TrackItem(
-                                track = track,
-                                trackIndex = index,
-                                isPlaying = isCurrentTrack && playbackState.isPlaying,
-                                onClick = {
-                                    android.util.Log.d("TalkDetailScreen", "Track clicked index=$index talkId=${talk.id}")
-                                    viewModel.playTrack(index)
-                                }
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
+                    // Scrollable Series Members List taking up available space
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        Column {
+                            talk.seriesMembers.forEachIndexed { index, member ->
+                                SeriesMemberItem(
+                                    member = member,
+                                    memberIndex = index,
+                                    onClick = {
+                                        android.util.Log.d("TalkDetailScreen", "Series member clicked: ${member.id}")
+                                        onNavigateToTalk(member.id)
+                                    }
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                            }
+                        }
+                    }
+                } else {
+                    // Show tracks for regular talks
+                    if (talk.tracks.isNotEmpty()) {
+                        Text(
+                            text = "Tracks (${talk.tracks.size})",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
+                    // Scrollable Track List taking up available space
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        Column {
+                            talk.tracks.forEachIndexed { index, track ->
+                                val isCurrentTrack =
+                                    playbackState.currentTrackIndex == index &&
+                                    currentTalk?.id == talk.id
+                                TrackItem(
+                                    track = track,
+                                    trackIndex = index,
+                                    isPlaying = isCurrentTrack && playbackState.isPlaying,
+                                    onClick = {
+                                        android.util.Log.d("TalkDetailScreen", "Track clicked index=$index talkId=${talk.id}")
+                                        viewModel.playTrack(index)
+                                    }
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                            }
                         }
                     }
                 }
@@ -334,6 +404,63 @@ fun TalkDetailScreen(
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun SeriesMemberItem(
+    member: SeriesMember,
+    memberIndex: Int,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clickable { onClick() },
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "${memberIndex + 1}.",
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.width(32.dp)
+            )
+
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = member.title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (member.blurb.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = member.blurb,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Icon(
+                imageVector = Icons.Default.PlayArrow,
+                contentDescription = "Play",
+                modifier = Modifier.padding(start = 8.dp)
+            )
+        }
     }
 }
 

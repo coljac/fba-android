@@ -8,7 +8,15 @@ data class Talk(
     val blurb: String,
     val imageUrl: String,
     val tracks: List<Track>,
-    val isFavorite: Boolean = false
+    val isFavorite: Boolean = false,
+    val isSeries: Boolean = false,
+    val seriesMembers: List<SeriesMember> = emptyList()
+)
+
+data class SeriesMember(
+    val id: String,
+    val title: String,
+    val blurb: String
 )
 
 data class Track(

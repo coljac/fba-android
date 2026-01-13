@@ -315,4 +315,95 @@ class FBAService {
         val remainingSeconds = seconds % 60
         return "$minutes:${remainingSeconds.toString().padStart(2, '0')}"
     }
+
+    suspend fun getSeriesDetails(seriesId: String): Talk? = withContext(Dispatchers.IO) {
+        try {
+            val url = "$baseUrl/series/details?num=$seriesId"
+            Log.d(TAG, "Fetching series details from $url")
+
+            val response = URL(url).readText()
+
+            // Extract series data from the JavaScript object
+            val jsonStart = response.indexOf("document.__FBA__.series = ")
+            if (jsonStart == -1) {
+                Log.e(TAG, "Could not find series JSON start marker in response")
+                return@withContext null
+            }
+
+            val jsonStartIndex = jsonStart + "document.__FBA__.series = ".length
+            val jsonEndIndex = response.indexOf("</script>", jsonStartIndex)
+
+            if (jsonEndIndex == -1) {
+                Log.e(TAG, "Could not find series JSON end marker in response")
+                return@withContext null
+            }
+
+            val jsonStr = response.substring(jsonStartIndex, jsonEndIndex).trim()
+            Log.d(TAG, "Found series details JSON, length: ${jsonStr.length}")
+
+            try {
+                val seriesObject = gson.fromJson(jsonStr, JsonObject::class.java)
+                Log.d(TAG, "Successfully parsed series object for ID: $seriesId")
+
+                // Extract basic series info
+                val title = if (seriesObject.has("title")) decodeHtml(seriesObject.get("title").asString) else "Unknown Series"
+                val speaker = if (seriesObject.has("speaker")) decodeHtml(seriesObject.get("speaker").asString) else "Unknown Speaker"
+                val year = if (seriesObject.has("year")) seriesObject.get("year").asString else ""
+                val blurb = if (seriesObject.has("blurb")) decodeHtml(seriesObject.get("blurb").asString) else ""
+                val catNum = if (seriesObject.has("cat_num")) seriesObject.get("cat_num").asString else seriesId
+
+                // Figure out image URL
+                val imageUrl = if (seriesObject.has("image") && !seriesObject.get("image").isJsonNull) {
+                    baseUrl + seriesObject.get("image").asString
+                } else if (seriesObject.has("speaker_image") && !seriesObject.get("speaker_image").isJsonNull) {
+                    baseUrl + seriesObject.get("speaker_image").asString
+                } else {
+                    "$baseUrl/images/default-speaker.jpg"
+                }
+
+                // Extract members array (the constituent talks in this series)
+                val membersArray = seriesObject.getAsJsonArray("members")
+                Log.d(TAG, "Found members array with ${membersArray?.size() ?: 0} talks")
+
+                val members = if (membersArray != null && membersArray.size() > 0) {
+                    membersArray.mapNotNull { memberElement ->
+                        try {
+                            val member = memberElement.asJsonObject
+                            space.coljac.FreeAudio.data.SeriesMember(
+                                id = if (member.has("cat_num")) member.get("cat_num").asString else "",
+                                title = if (member.has("title")) decodeHtml(member.get("title").asString) else "Unknown Talk",
+                                blurb = if (member.has("blurb")) decodeHtml(member.get("blurb").asString) else ""
+                            )
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error parsing series member: ${e.message}")
+                            null
+                        }
+                    }
+                } else {
+                    emptyList()
+                }
+
+                // Create and return a Talk object marked as a series
+                return@withContext space.coljac.FreeAudio.data.Talk(
+                    id = catNum,
+                    title = title,
+                    speaker = speaker,
+                    year = year,
+                    blurb = blurb,
+                    imageUrl = imageUrl,
+                    tracks = emptyList(), // Series don't have tracks
+                    isFavorite = false,
+                    isSeries = true,
+                    seriesMembers = members
+                )
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error parsing series details JSON: ${e.message}", e)
+                return@withContext null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching series details from network: ${e.message}", e)
+            return@withContext null
+        }
+    }
 } 

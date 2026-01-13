@@ -85,7 +85,7 @@ fun BottomPlayerBar(
                         IconButton(onClick = { viewModel.skipToPreviousTrack() }) {
                             Icon(Icons.Default.SkipPrevious, "Previous")
                         }
-                        IconButton(onClick = { viewModel.togglePlayPause() }) {
+                        IconButton(onClick = { viewModel.playOrToggleCurrentTalk() }) {
                             Icon(
                                 if (playbackState.isPlaying) Icons.Default.Pause 
                                 else Icons.Default.PlayArrow,

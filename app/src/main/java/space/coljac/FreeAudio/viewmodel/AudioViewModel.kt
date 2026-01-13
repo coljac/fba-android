@@ -86,8 +86,30 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     
     private fun loadRecentPlays() {
         viewModelScope.launch {
-            _recentPlays.value = repository.getRecentPlays()
-            Log.d(TAG, "Loaded ${_recentPlays.value.size} recent plays on startup")
+            val recent = repository.getRecentPlays()
+            _recentPlays.value = recent
+            Log.d(TAG, "Loaded ${recent.size} recent plays on startup")
+
+            // Auto-load the most recent talk into the UI (but don't play yet)
+            if (_currentTalk.value == null && recent.isNotEmpty()) {
+                val lastTalk = recent.first()
+                _currentTalk.value = lastTalk
+                _isDownloaded.value = repository.isDownloaded(lastTalk.id)
+                
+                // Restore visual state from progress
+                val savedProgress = progressRepository.getProgress(lastTalk.id)
+                if (savedProgress != null) {
+                    val track = lastTalk.tracks.getOrNull(savedProgress.trackIndex)
+                    val duration = (track?.durationSeconds ?: 0) * 1000L
+                    
+                    _playbackState.value = _playbackState.value.copy(
+                        position = savedProgress.positionMs,
+                        currentTrackIndex = savedProgress.trackIndex,
+                        currentTrack = track,
+                        duration = duration
+                    )
+                }
+            }
         }
     }
 
@@ -142,8 +164,27 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
     
-    fun playTalk(talk: Talk, startTrackIndex: Int = 0, startPositionMs: Long = 0) {
-        Log.d(TAG, "playTalk(talkId=${talk.id}, requestedIndex=$startTrackIndex, tracks=${talk.tracks.size})")
+    fun playTalk(talk: Talk, startTrackIndex: Int = 0, startPositionMs: Long = 0, checkSavedProgress: Boolean = true) {
+        Log.d(TAG, "playTalk(talkId=${talk.id}, requestedIndex=$startTrackIndex, tracks=${talk.tracks.size}, checkSavedProgress=$checkSavedProgress)")
+
+        // If requested and no explicit position is provided, check for saved progress
+        if (checkSavedProgress && startPositionMs == 0L && startTrackIndex == 0) {
+            viewModelScope.launch {
+                val savedProgress = progressRepository.getProgress(talk.id)
+                if (savedProgress != null) {
+                    Log.d(TAG, "Found saved progress for talk ${talk.id}: track ${savedProgress.trackIndex}, position ${savedProgress.positionMs}ms")
+                    // Recursively call playTalk with saved values, but don't check progress again
+                    playTalk(talk, savedProgress.trackIndex, savedProgress.positionMs, checkSavedProgress = false)
+                    return@launch
+                } else {
+                    Log.d(TAG, "No saved progress found for talk ${talk.id}")
+                    // Continue with the original play request
+                    playTalk(talk, startTrackIndex, startPositionMs, checkSavedProgress = false)
+                }
+            }
+            return
+        }
+
         setCurrentTalk(talk)
         val c = ensureControllerReady() ?: return
 
@@ -199,6 +240,7 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
             isPlaying = true
         )
         queuedTalkId = talk.id
+        lastSavedTrackIndex = validTrackIndex
 
         viewModelScope.launch {
             repository.addToRecentPlays(talk)
@@ -207,17 +249,9 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // New method to resume talk from saved progress
+    // This is now just an alias for playTalk with default parameters
     fun resumeTalkFromSavedProgress(talk: Talk) {
-        viewModelScope.launch {
-            val savedProgress = progressRepository.getProgress(talk.id)
-            if (savedProgress != null) {
-                Log.d(TAG, "Resuming talk ${talk.id} from saved progress: track ${savedProgress.trackIndex}, position ${savedProgress.positionMs}ms")
-                playTalk(talk, savedProgress.trackIndex, savedProgress.positionMs)
-            } else {
-                Log.d(TAG, "No saved progress for talk ${talk.id}, starting from beginning")
-                playTalk(talk, 0)
-            }
-        }
+        playTalk(talk, checkSavedProgress = true)
     }
 
     // Called from Talk detail main Play/Pause button. If the displayed talk
@@ -258,8 +292,12 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
 
                     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                         Log.d(TAG, "onMediaItemTransition reason=$reason index=${controller?.currentMediaItemIndex} title=${mediaItem?.mediaMetadata?.title}")
-                        // Save progress when track changes
-                        saveCurrentProgress()
+                        // Save progress for the PREVIOUS track before transitioning
+                        if (lastSavedTrackIndex >= 0) {
+                            saveProgressForTrack(lastSavedTrackIndex)
+                        }
+                        // Update to the new track index
+                        lastSavedTrackIndex = controller?.currentMediaItemIndex ?: -1
                         updatePlaybackState()
                     }
 
@@ -299,7 +337,8 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         // Always (re)build the playlist for this talk and start at the selected index.
         // This avoids cases where an identical item count from a previous queue causes
         // us to seek within the wrong playlist or default to the first item.
-        playTalk(talk, trackIndex)
+        // Don't check saved progress when user explicitly selects a track
+        playTalk(talk, trackIndex, checkSavedProgress = false)
     }
 
     fun seekForward() {
@@ -510,6 +549,7 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
 
     private var progressJob: Job? = null
     private var lastProgressSaveTime = 0L
+    private var lastSavedTrackIndex = -1
     private fun startProgressUpdates() {
         if (progressJob != null) return
         progressJob = viewModelScope.launch {
@@ -567,12 +607,32 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         val talk = _currentTalk.value ?: return
         val c = controller ?: return
 
-        // Only save progress if we have a meaningful position (more than 5 seconds)
+        // Only save progress if we have a meaningful position (more than 1 second)
         val position = c.currentPosition
-        if (position > 5000) {
+        if (position > 1000) {
             val progress = PlaybackProgress(
                 talkId = talk.id,
                 trackIndex = c.currentMediaItemIndex,
+                positionMs = position
+            )
+
+            viewModelScope.launch {
+                progressRepository.saveProgress(progress)
+            }
+        }
+    }
+
+    private fun saveProgressForTrack(trackIndex: Int) {
+        val talk = _currentTalk.value ?: return
+        val c = controller ?: return
+
+        // Save progress for a specific track index (used during transitions)
+        // Use the last known position before the transition
+        val position = c.currentPosition
+        if (position > 1000) {
+            val progress = PlaybackProgress(
+                talkId = talk.id,
+                trackIndex = trackIndex,
                 positionMs = position
             )
 

@@ -174,7 +174,10 @@ fun AppNavigation(
                 TalkDetailScreen(
                     viewModel = viewModel,
                     talkId = talkId,
-                    onNavigateUp = { navController.navigateUp() }
+                    onNavigateUp = { navController.navigateUp() },
+                    onNavigateToTalk = { newTalkId ->
+                        navController.navigate(Screen.TalkDetail.createRoute(newTalkId))
+                    }
                 )
             }
         }
