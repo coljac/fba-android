@@ -20,7 +20,7 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -70,12 +70,6 @@ dependencies {
     // Media Compat for notification styling
     implementation("androidx.media:media:1.7.0")
 
-
-
-    // Retrofit for network calls
-    implementation("com.squareup.retrofit2:retrofit:2.9.0")
-    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
-    
     // Coil for image loading
     implementation("io.coil-kt:coil-compose:2.6.0")
 
@@ -88,12 +82,4 @@ dependencies {
 
     // Material icons extended
     implementation("androidx.compose.material:material-icons-extended:1.6.1")
-    
-    // Swipe refresh for pull-to-refresh functionality
-    implementation("com.google.accompanist:accompanist-swiperefresh:0.33.2-alpha")
-
-//    implementation("androidx.media3:media3-exoplayer:1.2.0")
-//    implementation("androidx.media3:media3-session:1.2.0")
-//    implementation("androidx.media3:media3-common:1.2.0")
-
 }

@@ -26,6 +26,9 @@ fun SearchBar(onSearch: (String) -> Unit) {
             .padding(16.dp),
         placeholder = { Text("Search talks...") },
         leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
+        supportingText = if (searchText.isNotEmpty() && searchText.length < 3) {
+            { Text("Type at least 3 characters to search") }
+        } else null,
         singleLine = true,
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         keyboardActions = KeyboardActions(

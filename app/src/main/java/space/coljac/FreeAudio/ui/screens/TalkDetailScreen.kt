@@ -9,7 +9,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Favorite
@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -43,6 +44,8 @@ fun TalkDetailScreen(
     onNavigateToTalk: (String) -> Unit = {}
 ) {
     var showDeleteConfirmation by remember { mutableStateOf(false) }
+    var showSpeedDialog by remember { mutableStateOf(false) }
+    var showSleepDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(talkId) {
         android.util.Log.d("TalkDetailScreen", "Loading talk with ID: $talkId")
@@ -54,6 +57,9 @@ fun TalkDetailScreen(
     val downloadProgress by viewModel.downloadProgress.collectAsState()
     val isDownloaded by viewModel.isDownloaded.collectAsState()
     val downloadError by viewModel.downloadError.collectAsState()
+    val playbackError by viewModel.playbackError.collectAsState()
+    val playbackSpeed by viewModel.playbackSpeed.collectAsState()
+    val sleepTimerRemainingMs by viewModel.sleepTimerRemainingMs.collectAsState()
 
     Scaffold(
         topBar = {
@@ -112,7 +118,7 @@ fun TalkDetailScreen(
                                 when {
                                     downloadProgress != null -> {
                                         LinearProgressIndicator(
-                                            progress = downloadProgress ?: 0f,
+                                            progress = { downloadProgress ?: 0f },
                                             modifier = Modifier
                                                 .width(24.dp)
                                                 .height(2.dp)
@@ -161,19 +167,63 @@ fun TalkDetailScreen(
                                     imageVector = if (currentTalk?.isFavorite == true)
                                         Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                                     contentDescription = if (currentTalk?.isFavorite == true)
-                                        "Remove from Favorites" else "Add to Favorites",
+                                        "Remove from Favourites" else "Add to Favourites",
                                     modifier = Modifier.size(16.dp)
                                 )
-                                Text(if (currentTalk?.isFavorite == true) "Favorited" else "Favorite")
+                                Text(if (currentTalk?.isFavorite == true) "Favourited" else "Favourite")
                             }
                         }
                     }
+
+                    // Speed & Sleep Timer controls
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(onClick = { showSpeedDialog = true }) {
+                            Icon(
+                                Icons.Default.Speed,
+                                contentDescription = "Playback Speed",
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (playbackSpeed == 1.0f) "1x" else "${playbackSpeed}x",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+
+                        TextButton(onClick = { showSleepDialog = true }) {
+                            Icon(
+                                Icons.Default.Bedtime,
+                                contentDescription = "Sleep Timer",
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = when {
+                                    sleepTimerRemainingMs == -1L -> "End of track"
+                                    sleepTimerRemainingMs > 0 -> {
+                                        val mins = sleepTimerRemainingMs / 60_000
+                                        val secs = (sleepTimerRemainingMs % 60_000) / 1000
+                                        "${mins}:${secs.toString().padStart(2, '0')}"
+                                    }
+                                    else -> "Sleep"
+                                },
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+
                     // Player Controls (fixed) - only for non-series
                     Column(modifier = Modifier.fillMaxWidth()) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(top = 16.dp),
+                                .padding(top = 8.dp),
                             horizontalArrangement = Arrangement.SpaceEvenly,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -212,7 +262,7 @@ fun TalkDetailScreen(
                         )
                     }
                 } else {
-                    // For series, only show favorite button
+                    // For series, only show favourite button
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -238,10 +288,10 @@ fun TalkDetailScreen(
                                     imageVector = if (currentTalk?.isFavorite == true)
                                         Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                                     contentDescription = if (currentTalk?.isFavorite == true)
-                                        "Remove from Favorites" else "Add to Favorites",
+                                        "Remove from Favourites" else "Add to Favourites",
                                     modifier = Modifier.size(16.dp)
                                 )
-                                Text(if (currentTalk?.isFavorite == true) "Favorited" else "Favorite")
+                                Text(if (currentTalk?.isFavorite == true) "Favourited" else "Favourite")
                             }
                         }
                     }
@@ -307,7 +357,6 @@ fun TalkDetailScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Scrollable Series Members List taking up available space
                     Box(
                         modifier = Modifier
                             .weight(1f)
@@ -337,7 +386,6 @@ fun TalkDetailScreen(
                         Spacer(modifier = Modifier.height(8.dp))
                     }
 
-                    // Scrollable Track List taking up available space
                     Box(
                         modifier = Modifier
                             .weight(1f)
@@ -348,13 +396,21 @@ fun TalkDetailScreen(
                                 val isCurrentTrack =
                                     playbackState.currentTrackIndex == index &&
                                     currentTalk?.id == talk.id
+                                val trackProgress = if (isCurrentTrack && playbackState.duration > 0) {
+                                    (playbackState.position.toFloat() / playbackState.duration.toFloat()).coerceIn(0f, 1f)
+                                } else 0f
                                 TrackItem(
                                     track = track,
                                     trackIndex = index,
                                     isPlaying = isCurrentTrack && playbackState.isPlaying,
+                                    progress = trackProgress,
                                     onClick = {
                                         android.util.Log.d("TalkDetailScreen", "Track clicked index=$index talkId=${talk.id}")
-                                        viewModel.playTrack(index)
+                                        if (isCurrentTrack && playbackState.isPlaying) {
+                                            viewModel.togglePlayPause()
+                                        } else {
+                                            viewModel.playTrack(index)
+                                        }
                                     }
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
@@ -366,7 +422,7 @@ fun TalkDetailScreen(
         }
     }
 
-    // Show download error dialog if there's an error
+    // Show download error dialog
     downloadError?.let { errorMessage ->
         AlertDialog(
             onDismissRequest = { viewModel.clearDownloadError() },
@@ -374,6 +430,20 @@ fun TalkDetailScreen(
             text = { Text(errorMessage) },
             confirmButton = {
                 TextButton(onClick = { viewModel.clearDownloadError() }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+
+    // Show playback error dialog
+    playbackError?.let { errorMessage ->
+        AlertDialog(
+            onDismissRequest = { viewModel.clearPlaybackError() },
+            title = { Text("Playback Error") },
+            text = { Text(errorMessage) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.clearPlaybackError() }) {
                     Text("OK")
                 }
             }
@@ -400,6 +470,124 @@ fun TalkDetailScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirmation = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Speed selection dialog
+    if (showSpeedDialog) {
+        AlertDialog(
+            onDismissRequest = { showSpeedDialog = false },
+            title = { Text("Playback Speed") },
+            text = {
+                Column {
+                    val speeds = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
+                    speeds.forEach { speed ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.setPlaybackSpeed(speed)
+                                    showSpeedDialog = false
+                                }
+                                .padding(vertical = 12.dp, horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = playbackSpeed == speed,
+                                onClick = {
+                                    viewModel.setPlaybackSpeed(speed)
+                                    showSpeedDialog = false
+                                }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("${speed}x")
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showSpeedDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Sleep timer dialog
+    if (showSleepDialog) {
+        AlertDialog(
+            onDismissRequest = { showSleepDialog = false },
+            title = { Text("Sleep Timer") },
+            text = {
+                Column {
+                    val options = listOf(
+                        "Off" to 0,
+                        "15 minutes" to 15,
+                        "30 minutes" to 30,
+                        "45 minutes" to 45,
+                        "60 minutes" to 60,
+                    )
+                    options.forEach { (label, minutes) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    if (minutes == 0) {
+                                        viewModel.cancelSleepTimer()
+                                    } else {
+                                        viewModel.setSleepTimer(minutes)
+                                    }
+                                    showSleepDialog = false
+                                }
+                                .padding(vertical = 12.dp, horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = when {
+                                    minutes == 0 -> sleepTimerRemainingMs == 0L
+                                    else -> false // Can't easily match, so don't pre-select
+                                },
+                                onClick = {
+                                    if (minutes == 0) {
+                                        viewModel.cancelSleepTimer()
+                                    } else {
+                                        viewModel.setSleepTimer(minutes)
+                                    }
+                                    showSleepDialog = false
+                                }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(label)
+                        }
+                    }
+                    // End of track option
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                viewModel.setSleepTimerEndOfTrack()
+                                showSleepDialog = false
+                            }
+                            .padding(vertical = 12.dp, horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = sleepTimerRemainingMs == -1L,
+                            onClick = {
+                                viewModel.setSleepTimerEndOfTrack()
+                                showSleepDialog = false
+                            }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("End of current track")
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showSleepDialog = false }) {
                     Text("Cancel")
                 }
             }
@@ -469,6 +657,7 @@ private fun TrackItem(
     track: Track,
     trackIndex: Int,
     isPlaying: Boolean,
+    progress: Float = 0f,
     onClick: () -> Unit
 ) {
     Card(
@@ -547,6 +736,7 @@ private fun TrackItem(
                     exit = fadeOut()
                 ) {
                     LinearProgressIndicator(
+                        progress = { progress },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(2.dp)

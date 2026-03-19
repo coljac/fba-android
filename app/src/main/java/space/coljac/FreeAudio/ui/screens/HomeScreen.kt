@@ -8,8 +8,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
-import com.google.accompanist.swiperefresh.SwipeRefresh
-import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,87 +43,66 @@ fun HomeScreen(
             )
         }
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize()) {
-            // Add pull-to-refresh functionality using SwipeRefresh
-            var isRefreshing by remember { mutableStateOf(false) }
-            
-            // Create a coroutine scope that follows the lifecycle of this composable
-            val scope = rememberCoroutineScope()
-            
-            SwipeRefresh(
-                state = rememberSwipeRefreshState(isRefreshing),
-                onRefresh = {
-                    // Refresh the recent plays list
-                    viewModel.refreshRecentPlays()
-                    // Use a coroutine to update the refresh state after a delay
-                    scope.launch {
-                        isRefreshing = true
-                        kotlinx.coroutines.delay(800)
-                        isRefreshing = false
-                    }
+        var isRefreshing by remember { mutableStateOf(false) }
+        val scope = rememberCoroutineScope()
+        val pullToRefreshState = rememberPullToRefreshState()
+
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = {
+                viewModel.refreshRecentPlays()
+                scope.launch {
+                    isRefreshing = true
+                    delay(800)
+                    isRefreshing = false
                 }
+            },
+            state = pullToRefreshState,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize()
             ) {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding)
-                ) {
-            if (recentPlays.isNotEmpty()) {
-                item {
-                    Text(
-                        "Recently Played",
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(16.dp)
-                    )
-                }
-                
-                items(
-                    items = recentPlays,
-                    key = { "${it.id}_recent" }
-                ) { talk ->
-                    TalkItem(
-                        talk = talk,
-                        onClick = { onTalkSelected(it) },
-                        onPlayClick = { 
-                            viewModel.playTalk(it)
-                            onTalkSelected(it)
-                        }
-                    )
-                }
-            } else {
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(32.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
+                if (recentPlays.isNotEmpty()) {
+                    item {
                         Text(
-                            "Search and play talks to see recent items",
-                            style = MaterialTheme.typography.bodyLarge
+                            "Recently Played",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(16.dp)
                         )
                     }
+
+                    items(
+                        items = recentPlays,
+                        key = { "${it.id}_recent" }
+                    ) { talk ->
+                        TalkItem(
+                            talk = talk,
+                            onClick = { onTalkSelected(it) },
+                            onPlayClick = {
+                                viewModel.playTalk(it)
+                                onTalkSelected(it)
+                            }
+                        )
                     }
-                }
+                } else {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "Search and play talks to see recent items",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                        }
+                    }
                 }
             }
         }
     }
 }
-
-@Composable
-private fun DismissBackground() {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.errorContainer)
-            .padding(horizontal = 16.dp),
-        contentAlignment = Alignment.CenterEnd
-    ) {
-        Icon(
-            Icons.Default.Delete,
-            contentDescription = "Delete",
-            tint = MaterialTheme.colorScheme.onErrorContainer
-        )
-    }
-} 

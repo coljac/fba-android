@@ -458,6 +458,32 @@ class TalkRepository(private val context: Context) {
         return@withContext result
     }
     
-    // Debug method to get favorite IDs
-    suspend fun debugGetFavoriteIds(): Set<String> = getFavoriteIds()
+    /**
+     * Get favourite talks using only locally cached metadata (no network calls).
+     * Used by Android Auto browse tree to avoid blocking on network requests.
+     */
+    suspend fun getFavoriteTalksFromCache(): List<Talk> = withContext(Dispatchers.IO) {
+        val favoriteIds = getFavoriteIds()
+        if (favoriteIds.isEmpty()) return@withContext emptyList()
+
+        favoriteIds.mapNotNull { id ->
+            val downloadedFile = File(talksDirectory, "$id.json")
+            val favouriteFile = File(metadataDirectory, "$id.json")
+            val metadataFile = when {
+                downloadedFile.exists() -> downloadedFile
+                favouriteFile.exists() -> favouriteFile
+                else -> null
+            }
+
+            metadataFile?.let {
+                try {
+                    val talk = gson.fromJson(it.readText(), Talk::class.java)
+                    talk.copy(isFavorite = true)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error reading cached favourite talk $id", e)
+                    null
+                }
+            }
+        }
+    }
 } 

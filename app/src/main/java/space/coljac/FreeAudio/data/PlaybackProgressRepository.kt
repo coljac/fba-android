@@ -19,7 +19,7 @@ class PlaybackProgressRepository(context: Context) {
         try {
             val key = KEY_PROGRESS_PREFIX + progress.talkId
             val json = gson.toJson(progress)
-            prefs.edit().putString(key, json).apply()
+            prefs.edit().putString(key, json).commit()
             Log.d(TAG, "Saved progress for talk ${progress.talkId}: track ${progress.trackIndex}, position ${progress.positionMs}ms")
         } catch (e: Exception) {
             Log.e(TAG, "Error saving progress for talk ${progress.talkId}", e)
