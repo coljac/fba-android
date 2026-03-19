@@ -189,7 +189,7 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         val c = ensureControllerReady() ?: return
 
         // If we're already playing the same talk with the same queue size, avoid rebuilding
-        val sameTalk = _currentTalk.value?.id == talk.id
+        val sameTalk = queuedTalkId == talk.id
         if (sameTalk && c.mediaItemCount == talk.tracks.size) {
             val desiredIndex = if (talk.tracks.isNotEmpty()) startTrackIndex.coerceIn(0, talk.tracks.size - 1) else 0
             if (c.currentMediaItemIndex == desiredIndex) {
