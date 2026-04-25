@@ -3,6 +3,7 @@ package space.coljac.FreeAudio.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -52,7 +53,28 @@ fun SearchScreen(
                 }
                 is SearchState.Success -> {
                     val results = (searchState as SearchState.Success).response
+                    val isLoadingMore by viewModel.isLoadingMoreResults.collectAsState()
+                    val hasMore = results.results.size < results.total
+                    val listState = rememberLazyListState()
+
+                    val shouldLoadMore by remember(results.results.size, hasMore) {
+                        derivedStateOf {
+                            if (!hasMore) return@derivedStateOf false
+                            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()
+                                ?: return@derivedStateOf false
+                            // Trigger when within ~3 items of the end
+                            lastVisible.index >= results.results.size - 3
+                        }
+                    }
+
+                    LaunchedEffect(shouldLoadMore, isLoadingMore) {
+                        if (shouldLoadMore && !isLoadingMore) {
+                            viewModel.loadMoreSearchResults()
+                        }
+                    }
+
                     LazyColumn(
+                        state = listState,
                         modifier = Modifier.fillMaxSize() // Ensure the list fills all available space
                     ) {
                         item {
@@ -76,7 +98,7 @@ fun SearchScreen(
                                 }
                             }
                         }
-                        
+
                         items(
                             items = results.results,
                             key = { "${it.id}_search" }
@@ -84,11 +106,29 @@ fun SearchScreen(
                             TalkItem(
                                 talk = talk,
                                 onClick = { onTalkSelected(it) },
-                                onPlayClick = { 
+                                onPlayClick = {
                                     viewModel.playTalk(it)
                                     onTalkSelected(it)
                                 }
                             )
+                        }
+
+                        if (hasMore) {
+                            item(key = "load_more_footer") {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (isLoadingMore) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(24.dp),
+                                            strokeWidth = 2.dp
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }

@@ -42,9 +42,9 @@ class FBAService {
         return connection.inputStream.bufferedReader().use { it.readText() }
     }
 
-    suspend fun search(query: String): SearchResponse = withContext(Dispatchers.IO) {
+    suspend fun search(query: String, start: Int = 0, count: Int = 10): SearchResponse = withContext(Dispatchers.IO) {
         val encodedQuery = URLEncoder.encode(query, "UTF-8")
-        val url = "$baseUrl/search?s=0&r=10&b=p&q=$encodedQuery&t=audio"
+        val url = "$baseUrl/search?s=$start&r=$count&b=p&q=$encodedQuery&t=audio"
 
         val response = fetchUrl(url)
         Log.d(TAG, "Original response length: ${response.length}")

@@ -40,6 +40,12 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     private val _isUpdatingSearchResults = MutableStateFlow(false)
     val isUpdatingSearchResults: StateFlow<Boolean> = _isUpdatingSearchResults
 
+    private val _isLoadingMoreResults = MutableStateFlow(false)
+    val isLoadingMoreResults: StateFlow<Boolean> = _isLoadingMoreResults
+
+    private var currentSearchQuery: String = ""
+    private val searchPageSize = 10
+
     // Media3 controller bound to our MediaLibraryService
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var controller: MediaController? = null
@@ -139,43 +145,107 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 Log.d(TAG, "Searching for: $query")
+                currentSearchQuery = query
+                _isLoadingMoreResults.value = false
                 _searchState.value = SearchState.Loading
-                val searchResults = fbaService.search(query)
-                Log.d(TAG, "Got ${searchResults.total} results")
+                val searchResults = fbaService.search(query, 0, searchPageSize)
+                Log.d(TAG, "Got ${searchResults.total} results (page 1, ${searchResults.results.size} shown)")
 
                 // First display the initial results
                 _searchState.value = SearchState.Success(searchResults)
 
                 // Then update track information in the background
-                _isUpdatingSearchResults.value = true
-
-                try {
-                    // Get accurate track counts and durations from talk details
-                    val updatedResults = searchResults.results.map { talk ->
-                        try {
-                            val detailedTalk = repository.getTalkById(talk.id)
-                            if (detailedTalk != null && detailedTalk.tracks.isNotEmpty()) {
-                                Log.d(TAG, "Updated track count for ${talk.id}: was ${talk.tracks.size}, now ${detailedTalk.tracks.size}")
-                                detailedTalk
-                            } else {
-                                talk
-                            }
-                        } catch (e: Exception) {
-                            Log.w(TAG, "Failed to get detailed info for talk ${talk.id}", e)
-                            talk
-                        }
-                    }
-
-                    val updatedResponse = SearchResponse(searchResults.total, updatedResults)
-                    _searchState.value = SearchState.Success(updatedResponse)
-                } finally {
-                    _isUpdatingSearchResults.value = false
-                }
+                updateTrackDetailsForTalks(searchResults.results, query)
             } catch (e: Exception) {
                 Log.e(TAG, "Search error", e)
                 _searchState.value = SearchState.Error(e.message ?: "Unknown error")
                 _isUpdatingSearchResults.value = false
             }
+        }
+    }
+
+    fun loadMoreSearchResults() {
+        val currentState = _searchState.value
+        if (currentState !is SearchState.Success) return
+        if (_isLoadingMoreResults.value) return
+        if (currentSearchQuery.isEmpty()) return
+        val alreadyLoaded = currentState.response.results.size
+        if (alreadyLoaded >= currentState.response.total) return
+
+        val queryAtStart = currentSearchQuery
+        val offset = alreadyLoaded
+
+        viewModelScope.launch {
+            _isLoadingMoreResults.value = true
+            try {
+                Log.d(TAG, "Loading more results from offset $offset for query '$queryAtStart'")
+                val nextPage = fbaService.search(queryAtStart, offset, searchPageSize)
+
+                // Bail if user started a new search while we were waiting
+                if (queryAtStart != currentSearchQuery) {
+                    Log.d(TAG, "Query changed while loading more; discarding stale page")
+                    return@launch
+                }
+
+                val latestState = _searchState.value
+                if (latestState is SearchState.Success) {
+                    // Avoid duplicates if a page somehow overlaps existing ids
+                    val existingIds = latestState.response.results.map { it.id }.toHashSet()
+                    val newOnly = nextPage.results.filter { it.id !in existingIds }
+                    val combined = latestState.response.results + newOnly
+                    _searchState.value = SearchState.Success(
+                        SearchResponse(nextPage.total, combined)
+                    )
+                    Log.d(TAG, "Appended ${newOnly.size} new results (total shown: ${combined.size}/${nextPage.total})")
+
+                    // Hide the load-more spinner before kicking off the slower detail fetch
+                    _isLoadingMoreResults.value = false
+
+                    if (newOnly.isNotEmpty()) {
+                        updateTrackDetailsForTalks(newOnly, queryAtStart)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Load more error", e)
+            } finally {
+                _isLoadingMoreResults.value = false
+            }
+        }
+    }
+
+    /**
+     * Fetch detailed track info for the given talks and merge results into the
+     * current search state by id. Aborts if the active query changes mid-flight.
+     */
+    private suspend fun updateTrackDetailsForTalks(talks: List<Talk>, queryAtStart: String) {
+        if (talks.isEmpty()) return
+        _isUpdatingSearchResults.value = true
+        try {
+            val updatedById = mutableMapOf<String, Talk>()
+            for (talk in talks) {
+                if (queryAtStart != currentSearchQuery) return
+                try {
+                    val detailedTalk = repository.getTalkById(talk.id)
+                    if (detailedTalk != null && detailedTalk.tracks.isNotEmpty()) {
+                        Log.d(TAG, "Updated track count for ${talk.id}: was ${talk.tracks.size}, now ${detailedTalk.tracks.size}")
+                        updatedById[talk.id] = detailedTalk
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to get detailed info for talk ${talk.id}", e)
+                }
+            }
+            if (updatedById.isEmpty()) return
+            if (queryAtStart != currentSearchQuery) return
+
+            val curState = _searchState.value
+            if (curState is SearchState.Success) {
+                val merged = curState.response.results.map { updatedById[it.id] ?: it }
+                _searchState.value = SearchState.Success(
+                    SearchResponse(curState.response.total, merged)
+                )
+            }
+        } finally {
+            _isUpdatingSearchResults.value = false
         }
     }
 
