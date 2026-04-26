@@ -43,7 +43,11 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     private val _isLoadingMoreResults = MutableStateFlow(false)
     val isLoadingMoreResults: StateFlow<Boolean> = _isLoadingMoreResults
 
+    private val _selectedSpeaker = MutableStateFlow<String?>(null)
+    val selectedSpeaker: StateFlow<String?> = _selectedSpeaker
+
     private var currentSearchQuery: String = ""
+    private var currentSpeakerFilter: String? = null
     private val searchPageSize = 10
 
     // Media3 controller bound to our MediaLibraryService
@@ -142,20 +146,41 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun search(query: String) {
+        // New query → drop any existing speaker filter, since the available
+        // speakers will be different for the new result set.
+        if (query != currentSearchQuery) {
+            currentSpeakerFilter = null
+            _selectedSpeaker.value = null
+        }
+        runSearch(query)
+    }
+
+    fun setSpeakerFilter(speaker: String?) {
+        val normalized = speaker?.takeIf { it.isNotBlank() }
+        if (currentSpeakerFilter == normalized) return
+        currentSpeakerFilter = normalized
+        _selectedSpeaker.value = normalized
+        if (currentSearchQuery.isNotEmpty()) {
+            runSearch(currentSearchQuery)
+        }
+    }
+
+    private fun runSearch(query: String) {
         viewModelScope.launch {
             try {
-                Log.d(TAG, "Searching for: $query")
+                Log.d(TAG, "Searching for: $query (speaker=$currentSpeakerFilter)")
                 currentSearchQuery = query
+                val speakerAtStart = currentSpeakerFilter
                 _isLoadingMoreResults.value = false
                 _searchState.value = SearchState.Loading
-                val searchResults = fbaService.search(query, 0, searchPageSize)
+                val searchResults = fbaService.search(query, 0, searchPageSize, speakerAtStart)
                 Log.d(TAG, "Got ${searchResults.total} results (page 1, ${searchResults.results.size} shown)")
 
                 // First display the initial results
                 _searchState.value = SearchState.Success(searchResults)
 
                 // Then update track information in the background
-                updateTrackDetailsForTalks(searchResults.results, query)
+                updateTrackDetailsForTalks(searchResults.results, query, speakerAtStart)
             } catch (e: Exception) {
                 Log.e(TAG, "Search error", e)
                 _searchState.value = SearchState.Error(e.message ?: "Unknown error")
@@ -173,17 +198,18 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         if (alreadyLoaded >= currentState.response.total) return
 
         val queryAtStart = currentSearchQuery
+        val speakerAtStart = currentSpeakerFilter
         val offset = alreadyLoaded
 
         viewModelScope.launch {
             _isLoadingMoreResults.value = true
             try {
-                Log.d(TAG, "Loading more results from offset $offset for query '$queryAtStart'")
-                val nextPage = fbaService.search(queryAtStart, offset, searchPageSize)
+                Log.d(TAG, "Loading more from offset $offset for '$queryAtStart' speaker=$speakerAtStart")
+                val nextPage = fbaService.search(queryAtStart, offset, searchPageSize, speakerAtStart)
 
-                // Bail if user started a new search while we were waiting
-                if (queryAtStart != currentSearchQuery) {
-                    Log.d(TAG, "Query changed while loading more; discarding stale page")
+                // Bail if the active query/filter changed while we were waiting
+                if (queryAtStart != currentSearchQuery || speakerAtStart != currentSpeakerFilter) {
+                    Log.d(TAG, "Query/filter changed while loading more; discarding stale page")
                     return@launch
                 }
 
@@ -193,16 +219,28 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
                     val existingIds = latestState.response.results.map { it.id }.toHashSet()
                     val newOnly = nextPage.results.filter { it.id !in existingIds }
                     val combined = latestState.response.results + newOnly
+
+                    // If the server returned no new items, treat this as "no more
+                    // available" and cap the total so the UI stops asking for more
+                    // (otherwise we'd loop forever when total is wrong).
+                    val effectiveTotal = if (newOnly.isEmpty()) combined.size else nextPage.total
+
                     _searchState.value = SearchState.Success(
-                        SearchResponse(nextPage.total, combined)
+                        latestState.response.copy(
+                            total = effectiveTotal,
+                            results = combined,
+                            availableSpeakers = nextPage.availableSpeakers.ifEmpty {
+                                latestState.response.availableSpeakers
+                            }
+                        )
                     )
-                    Log.d(TAG, "Appended ${newOnly.size} new results (total shown: ${combined.size}/${nextPage.total})")
+                    Log.d(TAG, "Appended ${newOnly.size} new results (total shown: ${combined.size}/$effectiveTotal)")
 
                     // Hide the load-more spinner before kicking off the slower detail fetch
                     _isLoadingMoreResults.value = false
 
                     if (newOnly.isNotEmpty()) {
-                        updateTrackDetailsForTalks(newOnly, queryAtStart)
+                        updateTrackDetailsForTalks(newOnly, queryAtStart, speakerAtStart)
                     }
                 }
             } catch (e: Exception) {
@@ -215,15 +253,19 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
 
     /**
      * Fetch detailed track info for the given talks and merge results into the
-     * current search state by id. Aborts if the active query changes mid-flight.
+     * current search state by id. Aborts if the active query/filter changes mid-flight.
      */
-    private suspend fun updateTrackDetailsForTalks(talks: List<Talk>, queryAtStart: String) {
+    private suspend fun updateTrackDetailsForTalks(
+        talks: List<Talk>,
+        queryAtStart: String,
+        speakerAtStart: String?
+    ) {
         if (talks.isEmpty()) return
         _isUpdatingSearchResults.value = true
         try {
             val updatedById = mutableMapOf<String, Talk>()
             for (talk in talks) {
-                if (queryAtStart != currentSearchQuery) return
+                if (queryAtStart != currentSearchQuery || speakerAtStart != currentSpeakerFilter) return
                 try {
                     val detailedTalk = repository.getTalkById(talk.id)
                     if (detailedTalk != null && detailedTalk.tracks.isNotEmpty()) {
@@ -235,14 +277,12 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
             if (updatedById.isEmpty()) return
-            if (queryAtStart != currentSearchQuery) return
+            if (queryAtStart != currentSearchQuery || speakerAtStart != currentSpeakerFilter) return
 
             val curState = _searchState.value
             if (curState is SearchState.Success) {
                 val merged = curState.response.results.map { updatedById[it.id] ?: it }
-                _searchState.value = SearchState.Success(
-                    SearchResponse(curState.response.total, merged)
-                )
+                _searchState.value = SearchState.Success(curState.response.copy(results = merged))
             }
         } finally {
             _isUpdatingSearchResults.value = false
@@ -619,11 +659,9 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
                 val updatedResults = currentSearchState.response.results.map {
                     if (it.id == talk.id) updatedTalk else it
                 }
-                val updatedResponse = SearchResponse(
-                    total = currentSearchState.response.total,
-                    results = updatedResults
+                _searchState.value = SearchState.Success(
+                    currentSearchState.response.copy(results = updatedResults)
                 )
-                _searchState.value = SearchState.Success(updatedResponse)
             }
 
             _downloadedTalks.value = _downloadedTalks.value.map {

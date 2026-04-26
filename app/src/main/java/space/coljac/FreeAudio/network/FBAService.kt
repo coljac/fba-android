@@ -42,9 +42,20 @@ class FBAService {
         return connection.inputStream.bufferedReader().use { it.readText() }
     }
 
-    suspend fun search(query: String, start: Int = 0, count: Int = 10): SearchResponse = withContext(Dispatchers.IO) {
+    suspend fun search(
+        query: String,
+        start: Int = 0,
+        count: Int = 10,
+        speaker: String? = null
+    ): SearchResponse = withContext(Dispatchers.IO) {
         val encodedQuery = URLEncoder.encode(query, "UTF-8")
-        val url = "$baseUrl/search?s=$start&r=$count&b=p&q=$encodedQuery&t=audio"
+        val speakerParam = speaker?.takeIf { it.isNotBlank() }?.let {
+            "&sp=" + URLEncoder.encode(it, "UTF-8")
+        } ?: ""
+        // The FBA search endpoint's `s=` is a 1-indexed page number, not a record
+        // offset. Convert from caller's record offset (0, 10, 20…) to page (1, 2, 3…).
+        val page = (start / count.coerceAtLeast(1)) + 1
+        val url = "$baseUrl/search?s=$page&r=$count&b=p&q=$encodedQuery&t=audio$speakerParam"
 
         val response = fetchUrl(url)
         Log.d(TAG, "Original response length: ${response.length}")
@@ -107,7 +118,21 @@ class FBAService {
                 }
             }
 
-            SearchResponse(jsonObject.get("total").asInt, talks)
+            val availableSpeakers = try {
+                val filtersObj = jsonObject.getAsJsonObject("filters")
+                val speakerArr = filtersObj?.getAsJsonArray("speaker")
+                speakerArr?.mapNotNull {
+                    try {
+                        val name = it.asString
+                        if (name.isNullOrBlank()) null else name
+                    } catch (e: Exception) { null }
+                } ?: emptyList()
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not parse speaker facets", e)
+                emptyList()
+            }
+
+            SearchResponse(jsonObject.get("total").asInt, talks, availableSpeakers)
         } catch (e: Exception) {
             Log.e(TAG, "JSON parsing error", e)
             throw Exception("Failed to parse search results: ${e.message}")

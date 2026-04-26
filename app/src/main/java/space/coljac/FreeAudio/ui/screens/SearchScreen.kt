@@ -12,6 +12,7 @@ import androidx.compose.ui.unit.dp
 import space.coljac.FreeAudio.data.SearchState
 import space.coljac.FreeAudio.data.Talk
 import space.coljac.FreeAudio.ui.components.SearchBar
+import space.coljac.FreeAudio.ui.components.SpeakerFilter
 import space.coljac.FreeAudio.ui.components.TalkItem
 import space.coljac.FreeAudio.viewmodel.AudioViewModel
 
@@ -54,8 +55,15 @@ fun SearchScreen(
                 is SearchState.Success -> {
                     val results = (searchState as SearchState.Success).response
                     val isLoadingMore by viewModel.isLoadingMoreResults.collectAsState()
+                    val selectedSpeaker by viewModel.selectedSpeaker.collectAsState()
                     val hasMore = results.results.size < results.total
                     val listState = rememberLazyListState()
+
+                    SpeakerFilter(
+                        availableSpeakers = results.availableSpeakers,
+                        selectedSpeaker = selectedSpeaker,
+                        onSpeakerSelected = { viewModel.setSpeakerFilter(it) }
+                    )
 
                     val shouldLoadMore by remember(results.results.size, hasMore) {
                         derivedStateOf {

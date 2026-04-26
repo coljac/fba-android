@@ -30,7 +30,8 @@ data class Track(
 
 data class SearchResponse(
     val total: Int,
-    val results: List<Talk>
+    val results: List<Talk>,
+    val availableSpeakers: List<String> = emptyList()
 )
 
 sealed class SearchState {
